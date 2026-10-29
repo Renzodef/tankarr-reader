@@ -13,14 +13,14 @@ struct LibraryView: View {
         NavigationStack {
             ScrollView {
                 if let error = model.error {
-                    ContentUnavailableView("Connessione non riuscita", systemImage: "wifi.exclamationmark", description: Text(error))
-                    Button("Riprova") { Task { await model.refresh() } }.buttonStyle(.bordered)
+                    ContentUnavailableView(L10n.text("Connessione non riuscita"), systemImage: "wifi.exclamationmark", description: Text(error))
+                    Button(L10n.text("Riprova")) { Task { await model.refresh() } }.buttonStyle(.bordered)
                 }
-                if model.busy && model.library.isEmpty { ProgressView("Apro la libreria…").padding(48) }
+                if model.busy && model.library.isEmpty { ProgressView(L10n.text("Apro la libreria…")).padding(48) }
                 else if !model.canBrowse {
-                    ContentUnavailableView("La tua libreria, con te", systemImage: "books.vertical", description: Text("Collega il lettore al tuo server Tankarr."))
-                    Button("Configura connessione") { model.showConnection = true }.buttonStyle(.borderedProminent)
-                    Button("Esplora la demo") { model.startDemo() }.padding(.top, 8)
+                    ContentUnavailableView(L10n.text("La tua libreria, con te"), systemImage: "books.vertical", description: Text(L10n.text("Collega il lettore al tuo server Tankarr.")))
+                    Button(L10n.text("Configura connessione")) { model.showConnection = true }.buttonStyle(.borderedProminent)
+                    Button(L10n.text("Esplora la demo")) { model.startDemo() }.padding(.top, 8)
                 } else {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
                         ForEach(filtered) { series in
@@ -29,7 +29,7 @@ struct LibraryView: View {
                                     CoverView(series: series).aspectRatio(2.0 / 3.0, contentMode: .fit)
                                         .clipShape(RoundedRectangle(cornerRadius: 12))
                                     Text(series.title).font(.headline).lineLimit(2).foregroundStyle(.primary)
-                                    Text("\(series.booksCount) file disponibili").font(.caption).foregroundStyle(.secondary)
+                                    Text(L10n.format("%d file disponibili", series.booksCount)).font(.caption).foregroundStyle(.secondary)
                                 }
                             }.buttonStyle(.plain)
                         }
@@ -38,23 +38,24 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Tankarr")
-            .searchable(text: $search, prompt: "Cerca nella libreria")
+            .searchable(text: $search, prompt: L10n.text("Cerca nella libreria"))
             .refreshable { await model.refresh() }
             .navigationDestination(for: LibrarySeries.self) { SeriesView(series: $0) }
             .toolbar {
                 if model.canUseBookmarks {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { showBookmarks = true } label: { Image(systemName: "bookmark") }.accessibilityLabel("Segnalibri")
+                        Button { showBookmarks = true } label: { Image(systemName: "bookmark") }.accessibilityLabel(L10n.text("Segnalibri"))
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { model.showConnection = true } label: { Image(systemName: "network") }.accessibilityLabel("Connessione")
+                    Button { model.showConnection = true } label: { Image(systemName: "network") }.accessibilityLabel(L10n.text("Connessione"))
+                        .accessibilityIdentifier("connection-settings")
                 }
             }
             .safeAreaInset(edge: .bottom) {
                 HStack {
                     Image(systemName: "lock.shield")
-                    Text("Libreria in sola lettura").font(.caption)
+                    Text(L10n.text("Libreria in sola lettura")).font(.caption)
                     Spacer()
                     Text(model.endpointLabel).font(.caption2).lineLimit(1)
                 }.foregroundStyle(.secondary).padding(.horizontal).padding(.vertical, 8).background(.bar)
@@ -72,32 +73,32 @@ struct BookmarksView: View {
         NavigationStack {
             List {
                 Section {
-                    Text(model.isDemo ? "I segnalibri della demo restano su questo dispositivo." :
-                        "Un segnalibro per serie, condiviso con Tankarr e gli altri dispositivi. Salvalo dal lettore per scegliere dove riprendere.")
+                    Text(L10n.text(model.isDemo ? "I segnalibri della demo restano su questo dispositivo." :
+                        "Un segnalibro per serie, condiviso con Tankarr e gli altri dispositivi. Salvalo dal lettore per scegliere dove riprendere."))
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 if let error = model.bookmarkError {
-                    Section { Text(error).foregroundStyle(.orange); Button("Aggiorna segnalibri") { Task { await model.refreshBookmarks() } } }
+                    Section { Text(error).foregroundStyle(.orange); Button(L10n.text("Aggiorna segnalibri")) { Task { await model.refreshBookmarks() } } }
                 }
-                if model.bookmarksLoading { ProgressView("Carico i segnalibri…") }
+                if model.bookmarksLoading { ProgressView(L10n.text("Carico i segnalibri…")) }
                 if model.bookmarks.isEmpty && !model.bookmarksLoading {
-                    ContentUnavailableView("Nessun segnalibro", systemImage: "bookmark", description: Text("Apri un libro e usa Segnalibro per salvare una pagina."))
+                    ContentUnavailableView(L10n.text("Nessun segnalibro"), systemImage: "bookmark", description: Text(L10n.text("Apri un libro e usa Segnalibro per salvare una pagina.")))
                 }
                 ForEach(model.bookmarks) { bookmark in
                     Button { selected = bookmark } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(bookmark.seriesTitle).font(.headline).foregroundStyle(.primary)
-                            Text("\(bookmark.label) · Pagina \(bookmark.pageIndex + 1)").font(.subheadline).foregroundStyle(.secondary)
-                            Label("Riprendi lettura", systemImage: "book.pages").font(.caption)
+                            Text(L10n.format("%@ · Pagina %d", bookmark.label, bookmark.pageIndex + 1)).font(.subheadline).foregroundStyle(.secondary)
+                            Label(L10n.text("Riprendi lettura"), systemImage: "book.pages").font(.caption)
                         }.padding(.vertical, 4)
                     }.accessibilityIdentifier("bookmark-\(bookmark.seriesId)")
                         .swipeActions {
-                            Button("Rimuovi", role: .destructive) { Task { await model.removeBookmark(bookmark) } }
+                            Button(L10n.text("Rimuovi"), role: .destructive) { Task { await model.removeBookmark(bookmark) } }
                         }.disabled(model.bookmarkBusy || model.bookmarksLoading)
                 }
-                if model.bookmarkBusy { ProgressView("Aggiorno i segnalibri…") }
-            }.navigationTitle("Segnalibri")
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { dismiss() } } }
+                if model.bookmarkBusy { ProgressView(L10n.text("Aggiorno i segnalibri…")) }
+            }.navigationTitle(L10n.text("Segnalibri"))
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("Chiudi")) { dismiss() } } }
                 .task { await model.refreshBookmarks() }
                 .refreshable { await model.refreshBookmarks() }
                 .fullScreenCover(item: $selected) { ReaderView(bookID: $0.bookId, openingPage: $0.pageIndex) }
@@ -130,9 +131,9 @@ struct SeriesView: View {
             if !series.description.isEmpty {
                 Section { Text(series.description).font(.callout).foregroundStyle(.secondary).lineLimit(7) }
             }
-            if loading { ProgressView("Carico i libri…") }
-            if let error { Section { Text(error); Button("Riprova") { Task { await load() } } } }
-            Section("Disponibili da leggere") {
+            if loading { ProgressView(L10n.text("Carico i libri…")) }
+            if let error { Section { Text(error); Button(L10n.text("Riprova")) { Task { await load() } } } }
+            Section(L10n.text("Disponibili da leggere")) {
                 ForEach(books) { book in
                     Button { selected = book } label: {
                         HStack(spacing: 12) {
@@ -171,30 +172,40 @@ struct ConnectionView: View {
         NavigationStack {
             Form {
                 Section {
-                    Button("Esplora la libreria dimostrativa") { model.startDemo(); dismiss() }.disabled(model.busy)
-                } footer: { Text("Tre racconti originali per provare ricerca, lettura e zoom. Funziona senza account e senza connessione.") }
-                Section("Server") {
-                    TextField("Indirizzo locale (opzionale)", text: $profile.localAddress).keyboardType(.URL)
-                    TextField("Indirizzo HTTPS", text: $profile.remoteAddress).keyboardType(.URL)
-                    Picker("Connessione", selection: $profile.mode) { ForEach(ConnectionMode.allCases) { Text($0.label).tag($0) } }
+                    Picker(L10n.text("Lingua dell’app"), selection: Binding(
+                        get: { model.appLanguage }, set: { model.setLanguage($0) })) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(language.label).tag(language).accessibilityIdentifier("app-language-\(language.rawValue)")
+                        }
+                    }.pickerStyle(.menu).accessibilityIdentifier("app-language")
+                } header: { Text(L10n.text("Lingua dell’app")) } footer: {
+                    Text(L10n.text("La lingua dell’interfaccia è salvata su questo dispositivo. Sistema segue la lingua preferita dell’iPhone o iPad fra italiano e inglese; le altre lingue usano l’inglese. Non cambia la lingua dei libri."))
+                }
+                Section {
+                    Button(L10n.text("Esplora la libreria dimostrativa")) { model.startDemo(); dismiss() }.disabled(model.busy)
+                } footer: { Text(L10n.text("Tre racconti originali per provare ricerca, lettura e zoom. Funziona senza account e senza connessione.")) }
+                Section(L10n.text("Server")) {
+                    TextField(L10n.text("Indirizzo locale (opzionale)"), text: $profile.localAddress).keyboardType(.URL)
+                    TextField(L10n.text("Indirizzo HTTPS"), text: $profile.remoteAddress).keyboardType(.URL)
+                    Picker(L10n.text("Connessione"), selection: $profile.mode) { ForEach(ConnectionMode.allCases) { Text($0.label).tag($0) } }
                 }.textInputAutocapitalization(.never).autocorrectionDisabled()
-                Section("Account lettore") {
-                    TextField("Utente", text: $profile.username).textContentType(.username)
-                    SecureField("Password", text: $password).textContentType(.password)
+                Section(L10n.text("Account lettore")) {
+                    TextField(L10n.text("Utente"), text: $profile.username).textContentType(.username)
+                    SecureField(L10n.text("Password"), text: $password).textContentType(.password)
                 }.textInputAutocapitalization(.never).autocorrectionDisabled()
                 Section {
                     Button { Task { await model.connect(profile, password: password) } } label: {
-                        HStack { Text("Connetti"); Spacer(); if model.busy { ProgressView() } }
+                        HStack { Text(L10n.text("Connetti")); Spacer(); if model.busy { ProgressView() } }
                     }.disabled(model.busy)
-                    Button("Importa configurazione…") { importing = true }.disabled(model.busy)
+                    Button(L10n.text("Importa configurazione…")) { importing = true }.disabled(model.busy)
                 } footer: {
-                    Text("La password resta nel Portachiavi. L’ultima pagina letta è ricordata su questo dispositivo; i segnalibri salvati dal lettore sono condivisi con Tankarr. In Automatico provo prima l’indirizzo locale e poi HTTPS; aggiorna la libreria per cambiare rete.")
+                    Text(L10n.text("La password resta nel Portachiavi. L’ultima pagina letta è ricordata su questo dispositivo; i segnalibri salvati dal lettore sono condivisi con Tankarr. In Automatico provo prima l’indirizzo locale e poi HTTPS; aggiorna la libreria per cambiare rete."))
                 }
                 if let error = importError ?? model.error { Section { Text(error).foregroundStyle(.red) } }
-                Section { NavigationLink("Privacy e assistenza") { PrivacyView() } }
-                if model.canBrowse { Section { Button("Disconnetti", role: .destructive) { model.disconnect(); password = ""; profile = ServerProfile() } } }
-            }.navigationTitle("Connessione").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Chiudi") { dismiss() } } }
+                Section { NavigationLink(L10n.text("Privacy e assistenza")) { PrivacyView() } }
+                if model.canBrowse { Section { Button(L10n.text("Disconnetti"), role: .destructive) { model.disconnect(); password = ""; profile = ServerProfile() } } }
+            }.navigationTitle(L10n.text("Connessione")).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("Chiudi")) { dismiss() } } }
                 .onAppear { profile = model.profile; password = PasswordStore.read() ?? "" }
                 .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
                     do {
@@ -207,7 +218,7 @@ struct ConnectionView: View {
                             username: imported.username, mode: .automatic, instanceID: imported.instanceID)
                         _ = try newProfile.candidates()
                         profile = newProfile; password = imported.password; importError = nil
-                    } catch { importError = "Configurazione non valida: \(error.localizedDescription)" }
+                    } catch { importError = L10n.format("Configurazione non valida: %@", error.localizedDescription) }
                 }
         }
     }

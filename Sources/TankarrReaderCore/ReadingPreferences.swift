@@ -5,9 +5,9 @@ public enum ReaderDirection: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
     public var label: String {
         switch self {
-        case .automatic: return "Automatico"
-        case .ltr: return "Sinistra → destra"
-        case .rtl: return "Destra → sinistra"
+        case .automatic: return L10n.text("Automatico")
+        case .ltr: return L10n.text("Sinistra → destra")
+        case .rtl: return L10n.text("Destra → sinistra")
         }
     }
 }
@@ -17,9 +17,21 @@ public enum ReaderLayout: String, Codable, CaseIterable, Identifiable {
     public var id: String { rawValue }
     public var label: String {
         switch self {
-        case .automatic: return "Automatico"
-        case .paged: return "A pagine"
-        case .continuous: return "Scorrimento continuo"
+        case .automatic: return L10n.text("Automatico")
+        case .paged: return L10n.text("A pagine")
+        case .continuous: return L10n.text("Scorrimento continuo")
+        }
+    }
+}
+
+public enum ReaderAxis: String, Codable, CaseIterable, Identifiable {
+    case automatic, vertical, horizontal
+    public var id: String { rawValue }
+    public var label: String {
+        switch self {
+        case .automatic: return L10n.text("Automatico")
+        case .vertical: return L10n.text("Verticale")
+        case .horizontal: return L10n.text("Orizzontale")
         }
     }
 }
@@ -27,10 +39,26 @@ public enum ReaderLayout: String, Codable, CaseIterable, Identifiable {
 public struct ReadingOptions: Codable, Equatable {
     public var direction: ReaderDirection
     public var layout: ReaderLayout
+    public var axis: ReaderAxis
 
-    public init(direction: ReaderDirection = .automatic, layout: ReaderLayout = .automatic) {
+    public init(direction: ReaderDirection = .automatic, layout: ReaderLayout = .automatic,
+                axis: ReaderAxis = .automatic) {
         self.direction = direction
         self.layout = layout
+        self.axis = axis
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case direction, layout, axis
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        direction = try values.decode(ReaderDirection.self, forKey: .direction)
+        layout = try values.decode(ReaderLayout.self, forKey: .layout)
+        // Build 5 saved only direction and layout. Preserve those choices when
+        // opening existing preferences, retaining the old automatic axis.
+        axis = try values.decodeIfPresent(ReaderAxis.self, forKey: .axis) ?? .automatic
     }
 
     public func resolvedRTL(for book: ReaderBook) -> Bool {
@@ -46,6 +74,14 @@ public struct ReadingOptions: Codable, Equatable {
         case .automatic: return book.mode == "webtoon"
         case .paged: return false
         case .continuous: return true
+        }
+    }
+
+    public func resolvedAxis(for book: ReaderBook) -> ReaderAxis {
+        switch axis {
+        case .automatic: return resolvedContinuous(for: book) ? .vertical : .horizontal
+        case .vertical: return .vertical
+        case .horizontal: return .horizontal
         }
     }
 }

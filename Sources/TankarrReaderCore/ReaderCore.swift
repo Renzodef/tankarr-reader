@@ -7,12 +7,12 @@ public enum ReaderError: LocalizedError, Equatable {
     case invalidAddress, invalidIdentifier, invalidAccount, unauthorized, wrongServer, unavailable(Int)
     public var errorDescription: String? {
         switch self {
-        case .invalidAddress: return "Usa un indirizzo HTTPS valido. HTTP è consentito solo per indirizzi della rete locale."
-        case .invalidIdentifier: return "Identificativo della risorsa non valido."
-        case .invalidAccount: return "Inserisci utente e password dell’account lettore."
-        case .unauthorized: return "Utente o password del lettore non validi."
-        case .wrongServer: return "Questo indirizzo non è il lettore Tankarr configurato."
-        case .unavailable(let status): return "Risorsa non disponibile (\(status)). Riprova."
+        case .invalidAddress: return L10n.text("Usa un indirizzo HTTPS valido. HTTP è consentito solo per indirizzi della rete locale.")
+        case .invalidIdentifier: return L10n.text("Identificativo della risorsa non valido.")
+        case .invalidAccount: return L10n.text("Inserisci utente e password dell’account lettore.")
+        case .unauthorized: return L10n.text("Utente o password del lettore non validi.")
+        case .wrongServer: return L10n.text("Questo indirizzo non è il lettore Tankarr configurato.")
+        case .unavailable(let status): return L10n.format("Risorsa non disponibile (%d). Riprova.", status)
         }
     }
 }
@@ -21,7 +21,7 @@ public enum ConnectionMode: String, Codable, CaseIterable, Identifiable {
     case automatic, local, remote
     public var id: String { rawValue }
     public var label: String {
-        switch self { case .automatic: return "Automatico"; case .local: return "Locale"; case .remote: return "Remoto" }
+        switch self { case .automatic: return L10n.text("Automatico"); case .local: return L10n.text("Locale"); case .remote: return L10n.text("Remoto") }
     }
 }
 

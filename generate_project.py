@@ -14,7 +14,7 @@ def ident(value):
 def main():
     sources = sorted(str(p.relative_to(ROOT)) for folder in ("App", "Sources") for p in (ROOT / folder).rglob("*.swift"))
     ui_sources = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "UITests").glob("*.swift"))
-    resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy"]
+    resources = ["App/Assets.xcassets", "App/PrivacyInfo.xcprivacy", "App/InfoPlist.strings"]
     objects = []
 
     def put(key, value):
@@ -23,6 +23,14 @@ def main():
 
     refs = []
     for name in sources + resources + ui_sources:
+        if name == "App/InfoPlist.strings":
+            children = []
+            for language in ("it", "en"):
+                path = f"App/{language}.lproj/InfoPlist.strings"
+                children.append(put(path, f'isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = {language}; path = {json.dumps(path)}; sourceTree = "<group>";'))
+            refs.append(put(name, f'isa = PBXVariantGroup; children = ({",".join(children)},); name = InfoPlist.strings; sourceTree = "<group>";'))
+            put("build:" + name, f"isa = PBXBuildFile; fileRef = {ident(name)};")
+            continue
         kind = "sourcecode.swift" if name.endswith(".swift") else "text.xml" if name.endswith(".xcprivacy") else "folder.assetcatalog"
         refs.append(put(name, f"isa = PBXFileReference; lastKnownFileType = {kind}; path = {json.dumps(name)}; sourceTree = \"<group>\";"))
         put("build:" + name, f"isa = PBXBuildFile; fileRef = {ident(name)};")
@@ -69,7 +77,7 @@ def main():
         productType = "com.apple.product-type.bundle.ui-testing";''')
     put("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 1600; }};
         buildConfigurationList = {ident("projectConfigs")}; compatibilityVersion = "Xcode 14.0";
-        developmentRegion = it; hasScannedForEncodings = 0; knownRegions = (it,en,Base,);
+        developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (it,en,Base,);
         mainGroup = {ident("root")}; productRefGroup = {ident("products")}; projectDirPath = "";
         projectRoot = ""; targets = ({ident("target")},{ident("uiTarget")},);''')
     folder = ROOT / "TankarrReader.xcodeproj"

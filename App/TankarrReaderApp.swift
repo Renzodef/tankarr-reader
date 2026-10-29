@@ -5,10 +5,15 @@ import UIKit
 @main
 struct TankarrReaderApp: App {
     @StateObject private var model = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
             LibraryView().environmentObject(model).tint(.orange)
+                .environment(\.locale, model.languageLocale)
                 .task { await model.restore() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { model.refreshSystemLanguage() }
+                }
         }
     }
 }
@@ -47,29 +52,49 @@ final class AppModel: ObservableObject {
     @Published var api: ReaderAPI?
     @Published var library: [LibrarySeries] = []
     @Published var busy = false
-    @Published var error: String?
+    @Published private var connectionError: Error?
     @Published var showConnection = false
-    @Published var endpointLabel = "Non connesso"
+    @Published private var endpointHost: String?
     @Published var isDemo = false
+    @Published private(set) var appLanguage = AppLanguage.system
     @Published var bookmarks: [ReaderBookmark] = []
     @Published var bookmarksLoading = false
     @Published var bookmarkBusy = false
-    @Published var bookmarkError: String?
+    @Published private var bookmarkFailure: (format: String, error: Error)?
     @Published var readingStateWritable = false
     var canBrowse: Bool { api != nil || isDemo }
     var canUseBookmarks: Bool { isDemo || readingStateWritable }
+    var error: String? { connectionError.map { $0.localizedDescription } }
+    var bookmarkError: String? { bookmarkFailure.map { L10n.format($0.format, $0.error.localizedDescription) } }
+    var endpointLabel: String {
+        if isDemo { return L10n.text("Demo sul dispositivo") }
+        return canBrowse ? endpointHost ?? L10n.text("Connesso") : L10n.text("Non connesso")
+    }
+    var languageLocale: Locale { Locale(identifier: appLanguage.code()) }
     private var restored = false
     private var sessionID = UUID()
     private let covers = NSCache<NSString, UIImage>()
     private let progress = ReadingProgress()
     private let readingPreferences = ReadingPreferences()
+    private let languagePreferences = AppLanguagePreferences()
     private let demoBookmarks = DemoBookmarkStore()
 
     init() {
+        appLanguage = languagePreferences.language
+        L10n.language = appLanguage
         covers.totalCostLimit = 32 * 1024 * 1024
         covers.countLimit = 100
         if let data = UserDefaults.standard.data(forKey: "serverProfile"),
            let saved = try? JSONDecoder().decode(ServerProfile.self, from: data) { profile = saved }
+    }
+    func setLanguage(_ language: AppLanguage) {
+        guard appLanguage != language else { return }
+        L10n.language = language
+        languagePreferences.language = language
+        appLanguage = language
+    }
+    func refreshSystemLanguage() {
+        if appLanguage == .system { objectWillChange.send() }
     }
     func restore() async {
         guard !restored else { return }; restored = true
@@ -80,7 +105,7 @@ final class AppModel: ObservableObject {
         else { showConnection = true }
     }
     func connect(_ newProfile: ServerProfile, password: String) async {
-        guard !busy else { return }; busy = true; error = nil
+        guard !busy else { return }; busy = true; connectionError = nil
         defer { busy = false }
         do {
             let (client, status) = try await ReaderAPI.connect(profile: newProfile, password: password)
@@ -92,10 +117,10 @@ final class AppModel: ObservableObject {
             profile = accepted; api = client; isDemo = false; library = result.items; covers.removeAllObjects()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
             UserDefaults.standard.removeObject(forKey: "demoMode")
-            endpointLabel = client.base.host ?? "Connesso"
+            endpointHost = client.base.host
             showConnection = false
             await refreshBookmarks()
-        } catch { self.error = error.localizedDescription }
+        } catch { connectionError = error }
     }
     func refresh() async {
         if isDemo { startDemo(); return }
@@ -107,7 +132,7 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "demoMode")
         api = nil; isDemo = false; library = []; covers.removeAllObjects(); profile = ServerProfile()
         resetBookmarkSession(); readingStateWritable = false
-        endpointLabel = "Non connesso"; error = nil; showConnection = true
+        endpointHost = nil; connectionError = nil; showConnection = true
     }
     func cover(_ id: String) async -> UIImage? {
         if let cached = covers.object(forKey: id as NSString) { return cached }
@@ -148,16 +173,16 @@ final class AppModel: ObservableObject {
         guard !busy else { return }
         api = nil; isDemo = true; library = DemoCatalog.series; covers.removeAllObjects()
         resetBookmarkSession(); readingStateWritable = false; bookmarks = demoBookmarks.all()
-        error = nil; endpointLabel = "Demo sul dispositivo"; showConnection = false
+        connectionError = nil; endpointHost = nil; showConnection = false
         UserDefaults.standard.set(true, forKey: "demoMode")
     }
     private func resetBookmarkSession() {
-        sessionID = UUID(); bookmarks = []; bookmarkError = nil; bookmarksLoading = false
+        sessionID = UUID(); bookmarks = []; bookmarkFailure = nil; bookmarksLoading = false
     }
     func bookmark(for book: ReaderBook) -> ReaderBookmark? { bookmarks.first { $0.bookId == book.id } }
     func refreshBookmarks() async {
         guard canUseBookmarks, !bookmarkBusy, !bookmarksLoading else { return }
-        if isDemo { bookmarks = demoBookmarks.all(); bookmarkError = nil; return }
+        if isDemo { bookmarks = demoBookmarks.all(); bookmarkFailure = nil; return }
         guard let client = api else { return }
         let session = sessionID
         bookmarksLoading = true
@@ -165,9 +190,9 @@ final class AppModel: ObservableObject {
         do {
             let result: BookmarksResponse = try await client.get("/v1/bookmarks")
             guard sessionID == session else { return }
-            bookmarks = result.items; bookmarkError = nil
+            bookmarks = result.items; bookmarkFailure = nil
         } catch {
-            if sessionID == session, !Task.isCancelled { bookmarkError = "Impossibile aggiornare i segnalibri. \(error.localizedDescription)" }
+            if sessionID == session, !Task.isCancelled { bookmarkFailure = ("Impossibile aggiornare i segnalibri. %@", error) }
         }
     }
     func saveBookmark(_ book: ReaderBook, page: Int) async {
@@ -176,7 +201,7 @@ final class AppModel: ObservableObject {
         let session = sessionID
         let client = api
         let demo = isDemo
-        bookmarkBusy = true; bookmarkError = nil
+        bookmarkBusy = true; bookmarkFailure = nil
         defer { bookmarkBusy = false }
         do {
             let saved: ReaderBookmark
@@ -195,7 +220,7 @@ final class AppModel: ObservableObject {
             guard sessionID == session else { return }
             bookmarks.removeAll { $0.seriesId == saved.seriesId }; bookmarks.insert(saved, at: 0)
         } catch {
-            if sessionID == session { bookmarkError = "Segnalibro non confermato. Aggiorna l’elenco per verificarlo. \(error.localizedDescription)" }
+            if sessionID == session { bookmarkFailure = ("Segnalibro non confermato. Aggiorna l’elenco per verificarlo. %@", error) }
         }
     }
     func removeBookmark(_ bookmark: ReaderBookmark) async {
@@ -203,7 +228,7 @@ final class AppModel: ObservableObject {
         let session = sessionID
         let client = api
         let demo = isDemo
-        bookmarkBusy = true; bookmarkError = nil
+        bookmarkBusy = true; bookmarkFailure = nil
         defer { bookmarkBusy = false }
         do {
             if demo { demoBookmarks.remove(series: bookmark.seriesId) }
@@ -214,7 +239,7 @@ final class AppModel: ObservableObject {
             guard sessionID == session else { return }
             bookmarks.removeAll { $0.seriesId == bookmark.seriesId }
         } catch {
-            if sessionID == session { bookmarkError = "Rimozione non confermata. Aggiorna l’elenco per verificarla. \(error.localizedDescription)" }
+            if sessionID == session { bookmarkFailure = ("Rimozione non confermata. Aggiorna l’elenco per verificarla. %@", error) }
         }
     }
     func books(for series: String) async throws -> [LibraryBook] {

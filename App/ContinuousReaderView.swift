@@ -1,10 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// A vertical reader whose cells own their images only while on screen.
+/// A continuous reader whose cells own their images only while on screen.
 struct ContinuousReaderView: UIViewControllerRepresentable {
     let bookID: String
     let pageCount: Int
+    let axis: ReaderAxis
+    let rightToLeft: Bool
     let requestedPage: Int
     let requestID: Int
     let loadImage: @MainActor (Int) async throws -> UIImage
@@ -17,7 +19,8 @@ struct ContinuousReaderView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: ContinuousReaderController, context: Context) {
-        controller.configure(bookID: bookID, pageCount: pageCount, requestedPage: requestedPage,
+        controller.configure(bookID: bookID, pageCount: pageCount, axis: axis, rightToLeft: rightToLeft,
+                             requestedPage: requestedPage,
                              requestID: requestID, loadImage: loadImage, onVisiblePage: onVisiblePage)
     }
 
@@ -43,6 +46,8 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: pageLayout)
     private var bookID: String?
     private var pageCount = 0
+    private var axis: ReaderAxis = .vertical
+    private var rightToLeft = false
     private var requestID: Int?
     private var generation = 0
     private var loadImage: (@MainActor (Int) async throws -> UIImage)?
@@ -65,22 +70,29 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
         collectionView.register(ContinuousPageCell.self, forCellWithReuseIdentifier: "page")
         collectionView.isPrefetchingEnabled = false
         collectionView.contentInsetAdjustmentBehavior = .never
-        collectionView.alwaysBounceVertical = true
+        collectionView.alwaysBounceVertical = axis == .vertical
+        collectionView.alwaysBounceHorizontal = axis == .horizontal
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.accessibilityIdentifier = "reader-continuous"
-        // Vertical page order is the same for manga and left-to-right books.
+        // Geometry applies the chosen direction explicitly, independently of the UI language.
         collectionView.semanticContentAttribute = .forceLeftToRight
         view.addSubview(collectionView)
+        pageLayout.setFlow(axis: axis, rightToLeft: rightToLeft)
         pageLayout.reset(pageCount: pageCount)
     }
 
-    func configure(bookID: String, pageCount: Int, requestedPage: Int, requestID: Int,
+    func configure(bookID: String, pageCount: Int, axis: ReaderAxis, rightToLeft: Bool,
+                   requestedPage: Int, requestID: Int,
                    loadImage: @escaping @MainActor (Int) async throws -> UIImage,
                    onVisiblePage: @escaping @MainActor (Int, Bool) -> Void) {
         guard !stopped else { return }
         self.loadImage = loadImage
         self.onVisiblePage = onVisiblePage
         let changedBook = self.bookID != bookID || self.pageCount != pageCount
+        let changedFlow = self.axis != axis || self.rightToLeft != rightToLeft
+        let previousAnchor = changedFlow && !changedBook && isViewLoaded ? captureFlowAnchor() : nil
+        self.axis = axis
+        self.rightToLeft = rightToLeft
         if changedBook {
             generation += 1
             requests.values.forEach { $0.task.cancel() }
@@ -93,6 +105,16 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
                 pageLayout.reset(pageCount: self.pageCount)
                 collectionView.reloadData()
             }
+        }
+        if changedFlow, isViewLoaded {
+            adjustingLayout = true
+            collectionView.alwaysBounceVertical = axis == .vertical
+            collectionView.alwaysBounceHorizontal = axis == .horizontal
+            pageLayout.setFlow(axis: axis, rightToLeft: rightToLeft)
+            collectionView.layoutIfNeeded()
+            if let previousAnchor { restore(previousAnchor, keepingPageVisible: true) }
+            adjustingLayout = false
+            lastReportedPage = nil
         }
         if changedBook || self.requestID != requestID {
             self.requestID = requestID
@@ -209,8 +231,7 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
         // Ignore the last few pixels of a departing page when choosing the counter.
         let currentPage = visiblePages.first { page in
             guard let frame = pageLayout.frame(for: page) else { return false }
-            let minimumVisibleHeight = min(24, frame.height * 0.1, viewport.height * 0.1)
-            return frame.intersection(viewport).height >= minimumVisibleHeight
+            return pageLayout.length(of: frame.intersection(viewport)) >= minimumVisibleLength(for: frame)
         } ?? visiblePages.first
 
         // Prioritize the page being read, then the other genuinely visible cells.
@@ -255,20 +276,24 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
         case .success(let image):
             guard image.size.width > 0, image.size.height > 0,
                   (image.size.height / image.size.width).isFinite else {
-                cell.showError("Immagine non valida.")
-                updatePageGeometry { pageLayout.setMinimumHeight(cell.errorHeight + 48, for: page) }
+                cell.showError(L10n.text("Immagine non valida."))
+                updatePageGeometry { pageLayout.setMinimumLength(errorLength(cell), for: page) }
                 return
             }
             cell.showImage(image)
             updatePageGeometry {
                 pageLayout.setAspectRatio(image.size.height / image.size.width, for: page)
-                pageLayout.setMinimumHeight(nil, for: page)
+                pageLayout.setMinimumLength(nil, for: page)
             }
         case .failure(let error):
             cell.showError(error.localizedDescription)
-            // Even a failed short banner needs room for its localized retry button.
-            updatePageGeometry { pageLayout.setMinimumHeight(cell.errorHeight + 48, for: page) }
+            // A failed short page needs room for its localized retry button.
+            updatePageGeometry { pageLayout.setMinimumLength(errorLength(cell), for: page) }
         }
+    }
+
+    private func errorLength(_ cell: ContinuousPageCell) -> CGFloat {
+        axis == .vertical ? cell.errorHeight + 48 : min(360, max(1, collectionView.bounds.width))
     }
 
     private func updatePageGeometry(_ update: () -> Void) {
@@ -293,9 +318,9 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
     private func applyPendingJump() {
         guard let page = pendingJump, pageLayout.viewportSize.width > 0 else { return }
         collectionView.layoutIfNeeded()
-        guard let frame = pageLayout.frame(for: page) else { return }
+        guard let position = pageLayout.position(for: page) else { return }
         adjustingLayout = true
-        collectionView.setContentOffset(CGPoint(x: 0, y: frame.minY), animated: false)
+        collectionView.setContentOffset(pageLayout.contentOffset(for: position), animated: false)
         collectionView.layoutIfNeeded()
         pendingJump = nil
         anchor = captureAnchor()
@@ -303,17 +328,41 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
     }
 
     private func captureAnchor() -> Anchor? {
-        let offset = max(0, collectionView.contentOffset.y)
-        guard let page = pageLayout.page(at: offset), let frame = pageLayout.frame(for: page) else { return nil }
-        let withinPage = max(0, offset - frame.minY)
-        return Anchor(page: page, fraction: min(1, withinPage / max(1, frame.height)))
+        let offset = max(0, pageLayout.leadingPosition(in: collectionView.bounds))
+        guard let page = pageLayout.page(at: offset), let position = pageLayout.position(for: page),
+              let frame = pageLayout.frame(for: page) else { return nil }
+        let withinPage = max(0, offset - position)
+        return Anchor(page: page, fraction: min(1, withinPage / max(1, pageLayout.length(of: frame))))
     }
 
-    private func restore(_ anchor: Anchor) {
-        guard let frame = pageLayout.frame(for: anchor.page) else { return }
-        let withinPage = frame.height * anchor.fraction
-        let maximumOffset = max(0, pageLayout.collectionViewContentSize.height - collectionView.bounds.height)
-        collectionView.setContentOffset(CGPoint(x: 0, y: min(maximumOffset, frame.minY + withinPage)), animated: false)
+    private func captureFlowAnchor() -> Anchor? {
+        guard let captured = captureAnchor() else { return nil }
+        // The counter can already identify the next page while a few pixels of
+        // the preceding page remain at the edge. Preserve the page being read.
+        if let current = lastReportedPage, current != captured.page,
+           let frame = pageLayout.frame(for: current), frame.intersects(collectionView.bounds) {
+            return Anchor(page: current, fraction: 0)
+        }
+        return captured
+    }
+
+    private func minimumVisibleLength(for frame: CGRect) -> CGFloat {
+        min(24, pageLayout.length(of: frame) * 0.1,
+            pageLayout.length(of: collectionView.bounds) * 0.1)
+    }
+
+    private func restore(_ anchor: Anchor, keepingPageVisible: Bool = false) {
+        guard let frame = pageLayout.frame(for: anchor.page),
+              let position = pageLayout.position(for: anchor.page) else { return }
+        let length = pageLayout.length(of: frame)
+        var withinPage = length * anchor.fraction
+        if keepingPageVisible {
+            // A tall page can become narrow after an axis change. Keep enough
+            // of its trailing edge visible for the counter to stay on this page.
+            // The extra point avoids boundary rounding in the RTL conversion.
+            withinPage = min(withinPage, max(0, length - minimumVisibleLength(for: frame) - 1))
+        }
+        collectionView.setContentOffset(pageLayout.contentOffset(for: position + withinPage), animated: false)
         self.anchor = captureAnchor()
     }
 }
@@ -322,9 +371,12 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
 @MainActor
 private final class ContinuousPageLayout: UICollectionViewLayout {
     private(set) var viewportSize = CGSize.zero
+    private var axis: ReaderAxis = .vertical
+    private var rightToLeft = false
     private var pageCount = 0
     private var aspectRatios: [Int: CGFloat] = [:]
-    private var minimumHeights: [Int: CGFloat] = [:]
+    private var minimumLengths: [Int: CGFloat] = [:]
+    private var positions: [CGFloat] = []
     private var frames: [CGRect] = []
     private var contentSize = CGSize.zero
     private var needsPreparation = true
@@ -332,7 +384,16 @@ private final class ContinuousPageLayout: UICollectionViewLayout {
     func reset(pageCount: Int) {
         self.pageCount = pageCount
         aspectRatios.removeAll()
-        minimumHeights.removeAll()
+        minimumLengths.removeAll()
+        invalidateLayout()
+    }
+
+    func setFlow(axis: ReaderAxis, rightToLeft: Bool) {
+        guard self.axis != axis || self.rightToLeft != rightToLeft else { return }
+        self.axis = axis
+        self.rightToLeft = rightToLeft
+        // Error dimensions are specific to the current axis.
+        minimumLengths.removeAll()
         invalidateLayout()
     }
 
@@ -347,9 +408,9 @@ private final class ContinuousPageLayout: UICollectionViewLayout {
         invalidateLayout()
     }
 
-    func setMinimumHeight(_ height: CGFloat?, for page: Int) {
-        guard minimumHeights[page] != height else { return }
-        minimumHeights[page] = height
+    func setMinimumLength(_ length: CGFloat?, for page: Int) {
+        guard minimumLengths[page] != length else { return }
+        minimumLengths[page] = length
         invalidateLayout()
     }
 
@@ -360,18 +421,36 @@ private final class ContinuousPageLayout: UICollectionViewLayout {
 
     override func prepare() {
         super.prepare()
-        guard needsPreparation, viewportSize.width > 0 else { return }
+        guard needsPreparation, viewportSize.width > 0, viewportSize.height > 0 else { return }
         needsPreparation = false
         frames.removeAll(keepingCapacity: true)
-        var y: CGFloat = 0
+        positions.removeAll(keepingCapacity: true)
+        var position: CGFloat = 0
         for page in 0..<pageCount {
-            let height = max(minimumHeights[page] ?? 1, viewportSize.width * (aspectRatios[page] ?? 1.5))
-            frames.append(CGRect(x: 0, y: y, width: viewportSize.width, height: height))
-            y += height
+            let ratio = aspectRatios[page] ?? 1.5
+            let naturalLength = axis == .vertical ? viewportSize.width * ratio : viewportSize.height / ratio
+            let pageLength = max(minimumLengths[page] ?? 1, naturalLength)
+            positions.append(position)
+            if axis == .vertical {
+                frames.append(CGRect(x: 0, y: position, width: viewportSize.width, height: pageLength))
+            } else {
+                frames.append(CGRect(x: position, y: 0, width: pageLength, height: viewportSize.height))
+            }
+            position += pageLength
         }
-        // A short final page can still align at the top after a resume or explicit jump.
-        let lastPageBottom = (frames.last?.minY ?? 0) + viewportSize.height
-        contentSize = CGSize(width: viewportSize.width, height: max(y, lastPageBottom))
+        // The final short page can align at the reading edge after a resume or jump.
+        let viewportLength = axis == .vertical ? viewportSize.height : viewportSize.width
+        let contentLength = max(position, (positions.last ?? 0) + viewportLength)
+        if axis == .vertical {
+            contentSize = CGSize(width: viewportSize.width, height: contentLength)
+        } else {
+            contentSize = CGSize(width: contentLength, height: viewportSize.height)
+            if rightToLeft {
+                for page in frames.indices {
+                    frames[page].origin.x = contentLength - positions[page] - frames[page].width
+                }
+            }
+        }
     }
 
     override var collectionViewContentSize: CGSize { contentSize }
@@ -381,14 +460,41 @@ private final class ContinuousPageLayout: UICollectionViewLayout {
         return frames.indices.contains(page) ? frames[page] : nil
     }
 
-    func page(at y: CGFloat) -> Int? {
+    func length(of rect: CGRect) -> CGFloat {
+        guard !rect.isNull else { return 0 }
+        return axis == .vertical ? rect.height : rect.width
+    }
+
+    /// Distance from the beginning of the chapter, even when physical x runs backwards.
+    func leadingPosition(in rect: CGRect) -> CGFloat {
+        prepare()
+        if axis == .vertical { return rect.minY }
+        return rightToLeft ? contentSize.width - rect.maxX : rect.minX
+    }
+
+    func position(for page: Int) -> CGFloat? {
+        prepare()
+        return positions.indices.contains(page) ? positions[page] : nil
+    }
+
+    func contentOffset(for position: CGFloat) -> CGPoint {
+        prepare()
+        let maximum = axis == .vertical
+            ? max(0, contentSize.height - viewportSize.height)
+            : max(0, contentSize.width - viewportSize.width)
+        let logical = min(maximum, max(0, position))
+        if axis == .vertical { return CGPoint(x: 0, y: logical) }
+        return CGPoint(x: rightToLeft ? maximum - logical : logical, y: 0)
+    }
+
+    func page(at position: CGFloat) -> Int? {
         prepare()
         guard !frames.isEmpty else { return nil }
         var lower = 0
         var upper = frames.count
         while lower < upper {
             let middle = (lower + upper) / 2
-            if frames[middle].maxY <= y { lower = middle + 1 }
+            if positions[middle] + length(of: frames[middle]) <= position { lower = middle + 1 }
             else { upper = middle }
         }
         return min(lower, frames.count - 1)
@@ -402,10 +508,12 @@ private final class ContinuousPageLayout: UICollectionViewLayout {
     }
 
     override func layoutAttributesForElements(in rect: CGRect) -> [UICollectionViewLayoutAttributes]? {
-        guard let first = page(at: rect.minY) else { return [] }
+        let start = leadingPosition(in: rect)
+        guard let first = page(at: start) else { return [] }
+        let end = start + length(of: rect)
         var attributes: [UICollectionViewLayoutAttributes] = []
         for page in first..<frames.count {
-            guard frames[page].minY < rect.maxY else { break }
+            guard positions[page] < end else { break }
             if frames[page].intersects(rect), let item = layoutAttributesForItem(at: IndexPath(item: page, section: 0)) {
                 attributes.append(item)
             }
@@ -445,7 +553,7 @@ private final class ContinuousPageCell: UICollectionViewCell {
         errorLabel.numberOfLines = 5
         errorLabel.textAlignment = .center
         retryButton.configuration = .borderedProminent()
-        retryButton.setTitle("Riprova", for: .normal)
+        retryButton.setTitle(L10n.text("Riprova"), for: .normal)
         retryButton.addTarget(self, action: #selector(retryTapped), for: .touchUpInside)
         errorStack.axis = .vertical
         errorStack.spacing = 16
@@ -465,9 +573,9 @@ private final class ContinuousPageCell: UICollectionViewCell {
         self.retry = retry
         visibleRegion = nil
         accessibilityIdentifier = "continuous-page-\(page)"
-        imageView.accessibilityLabel = "Pagina \(page + 1) del libro"
+        imageView.accessibilityLabel = L10n.format("Pagina %d del libro", page + 1)
         retryButton.accessibilityIdentifier = "continuous-retry-\(page)"
-        retryButton.accessibilityLabel = "Riprova pagina \(page + 1)"
+        retryButton.accessibilityLabel = L10n.format("Riprova pagina %d", page + 1)
         showLoading()
     }
 
@@ -505,7 +613,7 @@ private final class ContinuousPageCell: UICollectionViewCell {
     func showError(_ message: String) {
         releaseImage()
         failed = true
-        errorLabel.text = "Impossibile caricare pagina \(page + 1).\n\(message)"
+        errorLabel.text = L10n.format("Impossibile caricare pagina %d.\n%@", page + 1, message)
         errorStack.isHidden = false
         setNeedsLayout()
     }
@@ -519,17 +627,22 @@ private final class ContinuousPageCell: UICollectionViewCell {
     override func layoutSubviews() {
         super.layoutSubviews()
         imageView.frame = contentView.bounds
+        let centerX = visibleRegion?.midX ?? contentView.bounds.midX
         let centerY = visibleRegion?.midY ?? contentView.bounds.midY
-        spinner.center = CGPoint(x: contentView.bounds.midX, y: centerY)
-        let width = max(1, min(480, contentView.bounds.width - 48))
+        spinner.center = CGPoint(x: centerX, y: centerY)
+        let width = errorWidth
         let size = fittedErrorSize()
+        let x = max(0, min(contentView.bounds.width - width, centerX - width / 2))
         let y = max(0, min(contentView.bounds.height - size.height, centerY - size.height / 2))
-        errorStack.frame = CGRect(x: (contentView.bounds.width - width) / 2, y: y, width: width, height: size.height)
+        errorStack.frame = CGRect(x: x, y: y, width: width, height: size.height)
+    }
+
+    private var errorWidth: CGFloat {
+        max(1, min(480, min(contentView.bounds.width, visibleRegion?.width ?? contentView.bounds.width) - 48))
     }
 
     private func fittedErrorSize() -> CGSize {
-        let width = max(1, min(480, contentView.bounds.width - 48))
-        return errorStack.systemLayoutSizeFitting(CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
+        return errorStack.systemLayoutSizeFitting(CGSize(width: errorWidth, height: UIView.layoutFittingCompressedSize.height),
                                                 withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel)
     }
 
