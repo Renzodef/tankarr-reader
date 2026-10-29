@@ -67,7 +67,9 @@ def verify():
         print(f"UI tests: {device['name']} ({device['udid']})", flush=True)
         if device["state"] != "Booted":
             run("xcrun", "simctl", "boot", device["udid"], timeout=120)
-        run("xcrun", "simctl", "bootstatus", device["udid"], "-b", timeout=300)
+        # Fresh hosted images may spend several minutes in Apple's first-boot
+        # data migration before any app can launch. Keep a bounded allowance.
+        run("xcrun", "simctl", "bootstatus", device["udid"], "-b", timeout=600)
         result = ROOT / "build/results" / f"{family}.xcresult"
         result.parent.mkdir(parents=True, exist_ok=True)
         if result.exists():
