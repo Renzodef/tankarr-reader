@@ -8,6 +8,13 @@ final class ReaderUITests: XCTestCase {
         app.launchArguments = ["--demo", "-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.waitForExistence(timeout: 15))
+        // A failed language-test run may have left an explicit override behind.
+        if app.staticTexts["Read-only library"].exists {
+            app.buttons["connection-settings"].tap()
+            app.buttons["app-language"].tap()
+            app.buttons["Italiano"].tap()
+            app.buttons["Chiudi"].tap()
+        }
     }
 
     private func capture(_ name: String) {
@@ -45,12 +52,30 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["1 / 3"].waitForExistence(timeout: 5))
     }
 
-    private func setReadingOptions(direction: String = "automatic", layout: String = "automatic") {
+    private func tapOption(_ identifier: String) {
+        let option = app.buttons[identifier]
+        XCTAssertTrue(option.waitForExistence(timeout: 5))
+        let form = app.collectionViews["reader-options"]
+        let scroller = form.exists ? form : app
+        for _ in 0..<3 {
+            if option.isHittable { break }
+            scroller.swipeUp(velocity: .slow)
+        }
+        for _ in 0..<6 {
+            if option.isHittable { break }
+            scroller.swipeDown(velocity: .slow)
+        }
+        XCTAssertTrue(option.isHittable, "Option must be visible: \(identifier)")
+        option.tap()
+    }
+
+    private func setReadingOptions(direction: String = "automatic", layout: String = "automatic", axis: String = "automatic") {
         app.buttons["Opzioni di lettura"].tap()
-        let directionOption = app.buttons["reader-direction-\(direction)"]
-        XCTAssertTrue(directionOption.waitForExistence(timeout: 5))
-        directionOption.tap()
-        app.buttons["reader-layout-\(layout)"].tap()
+        // A vertical flow intentionally disables the horizontal direction controls.
+        tapOption("reader-axis-horizontal")
+        tapOption("reader-direction-\(direction)")
+        tapOption("reader-layout-\(layout)")
+        tapOption("reader-axis-\(axis)")
         app.buttons["Fine"].tap()
         waitForLoadedPage()
     }
@@ -150,10 +175,11 @@ final class ReaderUITests: XCTestCase {
         returnToFirstDemoPage()
         XCTAssertGreaterThan(app.buttons["Pagina successiva"].frame.midX, app.buttons["Pagina precedente"].frame.midX)
 
-        setReadingOptions(direction: "rtl", layout: "continuous")
+        setReadingOptions(direction: "rtl", layout: "continuous", axis: "vertical")
         let scroll = app.collectionViews["reader-continuous"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 5))
-        XCTAssertLessThan(app.buttons["Pagina successiva"].frame.midX, app.buttons["Pagina precedente"].frame.midX)
+        XCTAssertGreaterThan(app.buttons["Pagina successiva"].frame.midX, app.buttons["Pagina precedente"].frame.midX,
+                             "Vertical flow always advances down, regardless of saved horizontal direction")
         app.buttons["Pagina successiva"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
         waitForLoadedPage()
@@ -177,12 +203,83 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), "Continuous reader resumes the visible loaded page")
         app.buttons["Opzioni di lettura"].tap()
         XCTAssertEqual(app.buttons["reader-direction-rtl"].value as? String, "Selezionato")
+        XCTAssertFalse(app.buttons["reader-direction-rtl"].isEnabled)
+        XCTAssertEqual(app.buttons["reader-axis-vertical"].value as? String, "Selezionato")
         XCTAssertEqual(app.buttons["reader-layout-continuous"].value as? String, "Selezionato")
-        app.buttons["reader-layout-paged"].tap()
+        tapOption("reader-layout-paged")
         app.buttons["Fine"].tap()
         waitForLoadedPage()
         XCTAssertFalse(scroll.exists)
         XCTAssertTrue(app.staticTexts["3 / 3"].exists, "Changing layout preserves the current page")
         setReadingOptions()
+    }
+
+    func testReadingAxesPagedGesturesAndHorizontalContinuous() {
+        app.staticTexts["Segnali dal faro"].firstMatch.tap()
+        openBook()
+        setReadingOptions(direction: "ltr", layout: "paged", axis: "vertical")
+        returnToFirstDemoPage()
+        app.images["reader-page"].firstMatch.swipeUp()
+        XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
+        waitForLoadedPage()
+        app.images["reader-page"].firstMatch.swipeDown()
+        XCTAssertTrue(app.staticTexts["1 / 3"].waitForExistence(timeout: 5))
+        waitForLoadedPage()
+
+        setReadingOptions(direction: "ltr", layout: "continuous", axis: "horizontal")
+        let scroll = app.collectionViews["reader-continuous"]
+        XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+        for _ in 0..<3 {
+            if app.staticTexts["3 / 3"].exists { break }
+            scroll.swipeLeft(velocity: .slow)
+        }
+        XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), "LTR continuous advances with a left swipe")
+        waitForLoadedPage()
+        app.buttons["Pagina precedente"].tap()
+        XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
+        waitForLoadedPage()
+        setReadingOptions(direction: "rtl", layout: "continuous", axis: "horizontal")
+        XCTAssertTrue(app.staticTexts["2 / 3"].exists, "Changing direction keeps the current page")
+        XCTAssertLessThan(app.buttons["Pagina successiva"].frame.midX, app.buttons["Pagina precedente"].frame.midX)
+        returnToFirstDemoPage()
+        for _ in 0..<3 {
+            if app.staticTexts["3 / 3"].exists { break }
+            scroll.swipeRight(velocity: .slow)
+        }
+        XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), "RTL continuous advances with a right swipe")
+        waitForLoadedPage()
+        capture("06-horizontal-continuous")
+        app.buttons["Chiudi libro"].tap()
+        openBook()
+        XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5))
+        XCTAssertTrue(scroll.exists)
+        app.buttons["Opzioni di lettura"].tap()
+        XCTAssertEqual(app.buttons["reader-axis-horizontal"].value as? String, "Selezionato")
+        XCTAssertEqual(app.buttons["reader-direction-rtl"].value as? String, "Selezionato")
+        app.buttons["Fine"].tap()
+        setReadingOptions()
+    }
+
+    func testZAppLanguageChangesImmediatelyAndPersists() {
+        app.buttons["connection-settings"].tap()
+        app.buttons["app-language"].tap()
+        app.buttons["English"].tap()
+        XCTAssertTrue(app.staticTexts["App language"].firstMatch.waitForExistence(timeout: 5))
+        app.buttons["Close"].tap()
+        XCTAssertTrue(app.staticTexts["Read-only library"].exists)
+        XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.exists, "Interface language never translates books")
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 10), "Explicit language survives relaunch and overrides the Italian system language")
+        app.buttons["connection-settings"].tap()
+        app.buttons["app-language"].tap()
+        app.buttons["System"].tap()
+        XCTAssertTrue(app.staticTexts["Lingua dell’app"].firstMatch.waitForExistence(timeout: 5))
+        app.buttons["app-language"].tap()
+        app.buttons["Italiano"].tap()
+        capture("07-language-selection")
+        app.buttons["Chiudi"].tap()
+        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].exists)
+        XCTAssertTrue(app.staticTexts["Demo sul dispositivo"].exists, "Changing language keeps the current connection")
     }
 }

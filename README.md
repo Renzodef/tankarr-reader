@@ -2,8 +2,9 @@
 
 Client nativo SwiftUI per il gateway Tankarr Reader dell'self-hosted. iOS 17+,
 iPhone e iPad; nessuna dipendenza esterna. Catalogo con ricerca e copertine,
-elenco dei libri scaricati, lettura a pagine con zoom, direzione selezionabile e
-scorrimento continuo per i webtoon.
+elenco dei libri scaricati, lettura a pagine con zoom e scorrimento continuo,
+verticale oppure orizzontale, con direzione selezionabile. Interfaccia italiana
+e inglese.
 L'ultima pagina letta resta sul dispositivo; i segnalibri vengono salvati sul
 server Tankarr. Nessuna modifica alla libreria,
 nessuna ricerca/download sul server e nessuna chiave amministrativa nell'app.
@@ -15,22 +16,43 @@ da Connessione; i dati di lettura locali possono essere cancellati separatamente
 
 ## Opzioni di lettura
 
-Il pulsante **Opzioni di lettura** nel lettore consente di scegliere la direzione
-**Automatico**, **Sinistra → destra** o **Destra → sinistra**, e il formato
-**Automatico**, **A pagine** o **Scorrimento continuo**. Le due opzioni sono
-indipendenti: Automatico segue rispettivamente la direzione e il formato indicati
-dal server. Un volume dichiarato webtoon si apre quindi in scorrimento continuo.
-Le preferenze sono salvate sul dispositivo per volume e server, restano dopo la
-riapertura e sono separate da quelle della demo.
+Il pulsante **Opzioni di lettura** nel lettore consente di scegliere:
 
-**A pagine** offre zoom con due dita e doppio tocco; la direzione scelta determina
-il verso dei controlli di navigazione. **Scorrimento continuo** mostra tutte le
-pagine del capitolo in sequenza verticale, dall'alto verso il basso. Le immagini
-vengono caricate man mano che servono e quelle lontane dalla posizione corrente
-vengono liberate per contenere l'uso di memoria. Lo zoom è disponibile nel formato
-a pagine. Durante lo scorrimento, la pagina visibile già caricata aggiorna la
-posizione locale ed è quella proposta dal menu Segnalibro; salvare il segnalibro
-resta un'azione esplicita.
+- il formato: **Automatico**, **A pagine** o **Scorrimento continuo**;
+- l'asse: **Automatico**, **Verticale** o **Orizzontale**;
+- la direzione orizzontale: **Automatico**, **Sinistra → destra** o **Destra → sinistra**.
+
+Direzione e formato automatici seguono le indicazioni del server. L'asse
+automatico usa il verticale in continuo e l'orizzontale a pagine, conservando il
+comportamento della build 5. Un volume dichiarato webtoon si apre quindi in
+continuo verticale. In verticale la scelta destra/sinistra è disabilitata; torna
+disponibile scegliendo l'orizzontale. Le preferenze sono salvate sul dispositivo
+per volume e server, restano dopo la riapertura e sono separate da quelle della
+demo. L'aggiornamento conserva direzione e formato già scelti; il nuovo asse
+parte da Automatico. Cambiare modalità mantiene la pagina corrente.
+
+**A pagine** offre zoom con due dita e doppio tocco. Senza zoom, gli scorrimenti
+cambiano pagina lungo l'asse scelto; in verticale si usano gesti su/giù e frecce
+su/giù, in orizzontale vale il verso di lettura scelto. Con lo zoom attivo, il
+trascinamento sposta l'immagine senza cambiare pagina.
+
+**Scorrimento continuo** mostra tutte le pagine del capitolo in sequenza:
+dall'alto verso il basso in verticale, oppure da sinistra a destra o da destra a
+sinistra in orizzontale. Le immagini vengono caricate man mano che servono e
+quelle lontane dalla posizione corrente vengono liberate per contenere l'uso di
+memoria. Lo zoom resta disponibile nel formato a pagine. La pagina visibile già
+caricata aggiorna la posizione locale ed è quella proposta dal menu Segnalibro;
+salvare il segnalibro resta un'azione esplicita.
+
+## Lingua dell'app
+
+In **Connessione → Lingua dell'app** si può scegliere **Sistema**, **Italiano** o
+**English**. Sistema è l'impostazione iniziale: sceglie la prima lingua supportata
+(italiano o inglese) nell'elenco preferenze di iOS, oppure l'inglese se non ne
+trova una. Il cambio si applica
+subito e viene ricordato sul dispositivo, senza perdere connessione o posizione
+di lettura. Cambia i comandi e i messaggi dell'app; non traduce titoli, libri o
+racconti demo, che restano nella lingua dei contenuti.
 
 ## Segnalibri e ripresa
 
@@ -99,7 +121,7 @@ simulatore. L'app non include password, account Apple o certificati di firma.
 
 `AppStore/metadata.json` contiene i testi italiano/inglese; `REVIEW_NOTES.md`
 le istruzioni per Apple; `SCREENSHOTS.md` la sequenza di acquisizione reale.
-L'interfaccia è italiana (i testi inglesi dello store lo dichiarano).
+L'interfaccia è disponibile in italiano e inglese; la demo originale resta italiana.
 `python3 Tools/check_store_assets.py` controlla limiti dei testi, icona e
 manifest privacy incluso nel target. La schermata privacy è disponibile anche
 offline; gli URL pubblici `/privacy` e `/support` servono documenti statici,

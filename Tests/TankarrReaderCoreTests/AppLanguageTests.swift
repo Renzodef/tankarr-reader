@@ -1,0 +1,88 @@
+import Foundation
+import XCTest
+@testable import TankarrReaderCore
+
+final class AppLanguageTests: XCTestCase {
+    func testSystemChoosesSupportedLanguageAndFallsBackToEnglish() {
+        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["it-IT", "en"]), "it")
+        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["en_GB", "it"]), "en")
+        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["fr-FR", "it"]), "it")
+        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["ja-JP"]), "en")
+        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: []), "en")
+        XCTAssertEqual(AppLanguage.italian.code(preferredLanguages: ["en"]), "it")
+        XCTAssertEqual(AppLanguage.english.code(preferredLanguages: ["it"]), "en")
+    }
+
+    func testPreferencePersistsAndInvalidValuesFallBackWithoutTouchingReadingData() {
+        let suite = "AppLanguageTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("server profile", forKey: "serverProfile")
+        defaults.set(3, forKey: "reading.position.example")
+        let preferences = AppLanguagePreferences(defaults: defaults)
+        XCTAssertEqual(preferences.language, .system)
+        preferences.language = .english
+        XCTAssertEqual(AppLanguagePreferences(defaults: defaults).language, .english)
+        preferences.language = .italian
+        XCTAssertEqual(AppLanguagePreferences(defaults: defaults).language, .italian)
+        defaults.set("unsupported", forKey: AppLanguagePreferences.key)
+        XCTAssertEqual(preferences.language, .system)
+        defaults.set(42, forKey: AppLanguagePreferences.key)
+        XCTAssertEqual(preferences.language, .system)
+        XCTAssertEqual(defaults.string(forKey: "serverProfile"), "server profile")
+        XCTAssertEqual(defaults.integer(forKey: "reading.position.example"), 3)
+    }
+
+    func testCatalogUsesEnglishAndPreservesItalianAndUnknownContent() {
+        XCTAssertEqual(L10n.text("Connessione", language: .english), "Connection")
+        XCTAssertEqual(L10n.text("Connessione", language: .italian), "Connessione")
+        XCTAssertEqual(L10n.text("Segnalibri", language: .system, preferredLanguages: ["en-US"]), "Bookmarks")
+        XCTAssertEqual(L10n.text("Segnalibri", language: .system, preferredLanguages: ["it-IT"]), "Segnalibri")
+        XCTAssertEqual(L10n.text("Original book title", language: .english), "Original book title")
+    }
+
+    func testRuntimeSwitchUpdatesFormattingAndCoreErrors() {
+        let before = L10n.language
+        defer { L10n.language = before }
+        L10n.language = .english
+        XCTAssertEqual(L10n.format("%@ · Pagina %d", "Volume 1", 7), "Volume 1 · Page 7")
+        XCTAssertEqual(L10n.format("%d di %d", 2, 13), "2 of 13")
+        XCTAssertEqual(ReaderError.unavailable(503).errorDescription, "Resource unavailable (503). Try again.")
+        XCTAssertEqual(ConnectionMode.automatic.label, "Automatic")
+        L10n.language = .italian
+        XCTAssertEqual(L10n.format("%@ · Pagina %d", "Volume 1", 7), "Volume 1 · Pagina 7")
+        XCTAssertEqual(ReaderError.unavailable(503).errorDescription, "Risorsa non disponibile (503). Riprova.")
+        XCTAssertEqual(ConnectionMode.automatic.label, "Automatico")
+    }
+
+    func testTranslationsKeepFormatArgumentsInOrder() throws {
+        let expression = try NSRegularExpression(pattern: "%[0-9$.*+\\-]*[a-zA-Z@]")
+        func placeholders(_ string: String) -> [String] {
+            expression.matches(in: string, range: NSRange(string.startIndex..., in: string)).map {
+                String(string[Range($0.range, in: string)!])
+            }
+        }
+        for (italian, english) in L10n.english {
+            XCTAssertFalse(english.isEmpty, italian)
+            XCTAssertEqual(placeholders(italian), placeholders(english), italian)
+        }
+    }
+
+    func testInterfaceLiteralKeysHaveEnglishCoverage() throws {
+        // Covers core labels, SwiftUI and UIKit. Dynamic metadata stays out of this
+        // catalog. The iOS app and package share these sources, so check the originals.
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let names = ["App/LibraryView.swift", "App/PrivacyView.swift", "App/TankarrReaderApp.swift",
+                     "App/ReaderView.swift", "App/ContinuousReaderView.swift",
+                     "Sources/TankarrReaderCore/ReaderCore.swift", "Sources/TankarrReaderCore/ReadingPreferences.swift"]
+        let expression = try NSRegularExpression(pattern: #"L10n\.(?:text|format)\("([^"\n]*)""#)
+        for name in names {
+            let contents = try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8)
+            for match in expression.matches(in: contents, range: NSRange(contents.startIndex..., in: contents)) {
+                let literal = String(contents[Range(match.range(at: 1), in: contents)!])
+                let key = literal.replacingOccurrences(of: #"\n"#, with: "\n")
+                XCTAssertNotNil(L10n.english[key], "Missing English translation: \(name): \(key)")
+            }
+        }
+    }
+}

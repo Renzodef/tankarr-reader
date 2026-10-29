@@ -18,52 +18,56 @@ struct ReaderView: View {
     @State private var showOptions = false
     @State private var continuousRequestPage = 0
     @State private var continuousRequestID = 0
-    private var rtl: Bool { book.map { options.resolvedRTL(for: $0) } ?? false }
+    private var axis: ReaderAxis { book.map { options.resolvedAxis(for: $0) } ?? .horizontal }
+    private var rtl: Bool { axis == .horizontal && (book.map { options.resolvedRTL(for: $0) } ?? false) }
     private var continuous: Bool { book.map { options.resolvedContinuous(for: $0) } ?? false }
 
     var body: some View {
         VStack(spacing: 0) {
             if controls {
                 HStack {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Chiudi libro")
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(L10n.text("Chiudi libro"))
                     Spacer()
-                    VStack { Text(book?.seriesTitle ?? "Tankarr").font(.caption).lineLimit(1); Text(book?.title ?? "Caricamento…").font(.caption2).lineLimit(1) }
+                    VStack { Text(book?.seriesTitle ?? "Tankarr").font(.caption).lineLimit(1); Text(book?.title ?? L10n.text("Caricamento…")).font(.caption2).lineLimit(1) }
                     Spacer()
                     if let book, model.canUseBookmarks, book.seriesId != nil {
                         Menu {
-                            Button(model.bookmark(for: book) == nil ? "Salva segnalibro" : "Sposta segnalibro a questa pagina") {
+                            Button(L10n.text(model.bookmark(for: book) == nil ? "Salva segnalibro" : "Sposta segnalibro a questa pagina")) {
                                 guard let displayed = loadedPage else { return }
                                 Task { await model.saveBookmark(book, page: displayed) }
                             }
                             if let bookmark = model.bookmark(for: book) {
-                                Button("Rimuovi segnalibro", role: .destructive) { Task { await model.removeBookmark(bookmark) } }
+                                Button(L10n.text("Rimuovi segnalibro"), role: .destructive) { Task { await model.removeBookmark(bookmark) } }
                             }
                         } label: {
                             Image(systemName: model.bookmark(for: book) == nil ? "bookmark" : "bookmark.fill")
-                        }.accessibilityLabel("Segnalibro")
+                        }.accessibilityLabel(L10n.text("Segnalibro"))
                             .disabled(loadedPage == nil || loading || model.bookmarkBusy || model.bookmarksLoading)
                     }
-                    Image(systemName: rtl ? "arrow.left" : "arrow.right").font(.caption).accessibilityLabel(rtl ? "Lettura da destra a sinistra" : "Lettura da sinistra a destra")
+                    Image(systemName: axis == .vertical ? "arrow.down" : (rtl ? "arrow.left" : "arrow.right")).font(.caption)
+                        .accessibilityLabel(L10n.text(axis == .vertical ? "Lettura dall’alto in basso" : (rtl ? "Lettura da destra a sinistra" : "Lettura da sinistra a destra")))
                     Button { showOptions = true } label: { Image(systemName: "slider.horizontal.3") }
-                        .accessibilityLabel("Opzioni di lettura").disabled(book == nil)
+                        .accessibilityLabel(L10n.text("Opzioni di lettura")).disabled(book == nil)
                 }.padding().background(.ultraThinMaterial)
             }
             ZStack {
                 Color.black
                 if continuous, let book {
                     ContinuousReaderView(bookID: bookID, pageCount: book.pageCount,
+                        axis: axis, rightToLeft: rtl,
                         requestedPage: continuousRequestPage, requestID: continuousRequestID,
                         loadImage: { index in try await model.page(bookID, at: index) },
                         onVisiblePage: visiblePageChanged)
                 } else if let image {
-                    ZoomPage(image: image, identity: "\(bookID):\(loadedPage ?? 0)", webtoon: false)
+                    ZoomPage(image: image, identity: "\(bookID):\(loadedPage ?? 0)", axis: axis,
+                             rightToLeft: rtl, onStep: step)
                 }
                 if loading && !continuous { ProgressView().tint(.white).padding(20).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12)) }
                 if let error {
                     VStack(spacing: 16) {
                         Image(systemName: "wifi.exclamationmark").font(.largeTitle)
                         Text(error).multilineTextAlignment(.center)
-                        Button("Riprova") { retry += 1 }.buttonStyle(.borderedProminent)
+                        Button(L10n.text("Riprova")) { retry += 1 }.buttonStyle(.borderedProminent)
                     }.foregroundStyle(.white).padding(28).background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 16)).padding()
                 }
             }
@@ -71,26 +75,26 @@ struct ReaderView: View {
                 VStack(spacing: 8) {
                     if let error = model.bookmarkError {
                         Text(error).font(.caption).foregroundStyle(.orange)
-                        Button("Aggiorna segnalibri") { Task { await model.refreshBookmarks() } }
+                        Button(L10n.text("Aggiorna segnalibri")) { Task { await model.refreshBookmarks() } }
                             .font(.caption).disabled(model.bookmarkBusy || model.bookmarksLoading)
                     }
-                    if model.bookmarkBusy { ProgressView("Salvo il segnalibro…").font(.caption) }
+                    if model.bookmarkBusy { ProgressView(L10n.text("Salvo il segnalibro…")).font(.caption) }
                     else if let bookmark = model.bookmark(for: book) {
-                        Text("Segnalibro a pagina \(bookmark.pageIndex + 1)").font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.format("Segnalibro a pagina %d", bookmark.pageIndex + 1)).font(.caption).foregroundStyle(.secondary)
                     }
                     HStack {
-                        Button { step(rtl ? 1 : -1) } label: { Image(systemName: "chevron.left").frame(width: 44, height: 36) }
-                            .disabled(rtl ? page >= book.pageCount - 1 : page <= 0).accessibilityLabel(rtl ? "Pagina successiva" : "Pagina precedente")
+                        Button { step(rtl ? 1 : -1) } label: { Image(systemName: axis == .vertical ? "chevron.up" : "chevron.left").frame(width: 44, height: 36) }
+                            .disabled(rtl ? page >= book.pageCount - 1 : page <= 0).accessibilityLabel(L10n.text(rtl ? "Pagina successiva" : "Pagina precedente"))
                         Spacer()
                         Text("\(page + 1) / \(book.pageCount)").monospacedDigit().font(.callout)
                             .accessibilityIdentifier("reader-page-counter")
                         Spacer()
-                        Button { step(rtl ? -1 : 1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 36) }
-                            .disabled(rtl ? page <= 0 : page >= book.pageCount - 1).accessibilityLabel(rtl ? "Pagina precedente" : "Pagina successiva")
+                        Button { step(rtl ? -1 : 1) } label: { Image(systemName: axis == .vertical ? "chevron.down" : "chevron.right").frame(width: 44, height: 36) }
+                            .disabled(rtl ? page <= 0 : page >= book.pageCount - 1).accessibilityLabel(L10n.text(rtl ? "Pagina precedente" : "Pagina successiva"))
                     }
                     if book.pageCount > 1 {
                         Slider(value: Binding(get: { Double(page) }, set: { navigate(to: Int($0)) }), in: 0...Double(book.pageCount - 1), step: 1)
-                            .accessibilityLabel("Pagina").accessibilityValue("\(page + 1) di \(book.pageCount)")
+                            .accessibilityLabel(L10n.text("Pagina")).accessibilityValue(L10n.format("%d di %d", page + 1, book.pageCount))
                     }
                 }.padding(.horizontal, 16).padding(.vertical, 8).background(.ultraThinMaterial)
             }
@@ -109,28 +113,41 @@ struct ReaderView: View {
     private var readingOptionsSheet: some View {
         NavigationStack {
             Form {
-                Section("Verso di lettura") {
-                    ForEach(ReaderDirection.allCases) { direction in
-                        Button { options.direction = direction } label: {
-                            optionRow(direction.label, selected: options.direction == direction)
-                        }.accessibilityIdentifier("reader-direction-\(direction.rawValue)")
-                            .accessibilityValue(options.direction == direction ? "Selezionato" : "")
-                    }
-                }
-                Section("Visualizzazione") {
+                Section(L10n.text("Visualizzazione")) {
                     ForEach(ReaderLayout.allCases) { layout in
                         Button { options.layout = layout } label: {
                             optionRow(layout.label, selected: options.layout == layout)
                         }.accessibilityIdentifier("reader-layout-\(layout.rawValue)")
-                            .accessibilityValue(options.layout == layout ? "Selezionato" : "")
+                            .accessibilityValue(options.layout == layout ? L10n.text("Selezionato") : "")
+                    }
+                }
+                Section(L10n.text("Asse di lettura")) {
+                    ForEach(ReaderAxis.allCases) { value in
+                        Button { options.axis = value } label: {
+                            optionRow(value.label, selected: options.axis == value)
+                        }.accessibilityIdentifier("reader-axis-\(value.rawValue)")
+                            .accessibilityValue(options.axis == value ? L10n.text("Selezionato") : "")
                     }
                 }
                 Section {
-                    Text("Automatico segue le indicazioni del volume. Le tue scelte restano salvate su questo dispositivo per questo volume, senza modificare i segnalibri.")
+                    ForEach(ReaderDirection.allCases) { direction in
+                        Button { options.direction = direction } label: {
+                            optionRow(direction.label, selected: options.direction == direction)
+                        }.accessibilityIdentifier("reader-direction-\(direction.rawValue)")
+                            .accessibilityValue(options.direction == direction ? L10n.text("Selezionato") : "")
+                            .disabled(axis == .vertical)
+                    }
+                } header: { Text(L10n.text("Verso orizzontale"))
+                } footer: {
+                    if axis == .vertical { Text(L10n.text("In verticale si legge dall’alto in basso. Il verso sinistra/destra si applica solo all’asse orizzontale.")) }
+                }
+                Section {
+                    Text(L10n.text("L’asse automatico è verticale nel continuo e orizzontale a pagine. Modalità e verso automatici seguono il volume. Le scelte restano salvate su questo dispositivo per volume, senza modificare i segnalibri."))
                         .font(.footnote).foregroundStyle(.secondary)
                 }
-            }.navigationTitle("Lettura").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { showOptions = false } } }
+            }.accessibilityIdentifier("reader-options")
+                .navigationTitle(L10n.text("Lettura")).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L10n.text("Fine")) { showOptions = false } } }
         }.preferredColorScheme(.dark)
     }
     private func optionRow(_ title: String, selected: Bool) -> some View {
@@ -185,15 +202,21 @@ struct ReaderView: View {
 struct ZoomPage: UIViewRepresentable {
     let image: UIImage
     let identity: String
-    let webtoon: Bool
+    let axis: ReaderAxis
+    let rightToLeft: Bool
+    let onStep: (Int) -> Void
     func makeUIView(context: Context) -> PageScrollView { PageScrollView() }
-    func updateUIView(_ view: PageScrollView, context: Context) { view.display(image, identity: identity, webtoon: webtoon) }
+    func updateUIView(_ view: PageScrollView, context: Context) {
+        view.display(image, identity: identity, axis: axis, rightToLeft: rightToLeft, onStep: onStep)
+    }
 }
 
 final class PageScrollView: UIScrollView, UIScrollViewDelegate {
     private let pageView = UIImageView()
     private var identity = ""
-    private var webtoon = false
+    private var axis: ReaderAxis = .horizontal
+    private var rightToLeft = false
+    private var onStep: ((Int) -> Void)?
     private var previousBounds = CGSize.zero
     init() {
         super.init(frame: .zero)
@@ -202,14 +225,22 @@ final class PageScrollView: UIScrollView, UIScrollViewDelegate {
         pageView.contentMode = .scaleAspectFit; addSubview(pageView)
         pageView.isAccessibilityElement = true
         pageView.accessibilityIdentifier = "reader-page"
-        pageView.accessibilityLabel = "Pagina del libro"
+        pageView.accessibilityLabel = L10n.text("Pagina del libro")
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(zoomTapped(_:)))
         doubleTap.numberOfTapsRequired = 2; addGestureRecognizer(doubleTap)
+        for direction: UISwipeGestureRecognizer.Direction in [.up, .down, .left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(pageSwiped(_:)))
+            swipe.direction = direction
+            addGestureRecognizer(swipe)
+            panGestureRecognizer.require(toFail: swipe)
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-    func display(_ image: UIImage, identity: String, webtoon: Bool) {
+    func display(_ image: UIImage, identity: String, axis: ReaderAxis, rightToLeft: Bool, onStep: @escaping (Int) -> Void) {
+        self.axis = axis; self.rightToLeft = rightToLeft; self.onStep = onStep
+        pageView.accessibilityLabel = L10n.text("Pagina del libro")
         guard self.identity != identity else { return }
-        self.identity = identity; self.webtoon = webtoon; pageView.image = image
+        self.identity = identity; pageView.image = image
         previousBounds = .zero; setNeedsLayout()
     }
     override func layoutSubviews() {
@@ -217,7 +248,7 @@ final class PageScrollView: UIScrollView, UIScrollViewDelegate {
         if bounds.size != previousBounds, bounds.width > 0, bounds.height > 0, let image = pageView.image {
             previousBounds = bounds.size
             zoomScale = 1
-            let factor = webtoon ? bounds.width / image.size.width : min(bounds.width / image.size.width, bounds.height / image.size.height)
+            let factor = min(bounds.width / image.size.width, bounds.height / image.size.height)
             pageView.frame = CGRect(origin: .zero, size: CGSize(width: image.size.width * factor, height: image.size.height * factor))
             contentSize = pageView.frame.size; contentOffset = .zero
         }
@@ -228,6 +259,20 @@ final class PageScrollView: UIScrollView, UIScrollViewDelegate {
     }
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { pageView }
     func scrollViewDidZoom(_ scrollView: UIScrollView) { centerPage() }
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if let swipe = gestureRecognizer as? UISwipeGestureRecognizer {
+            guard zoomScale <= 1.05 else { return false }
+            return axis == .vertical ? (swipe.direction == .up || swipe.direction == .down)
+                                     : (swipe.direction == .left || swipe.direction == .right)
+        }
+        return super.gestureRecognizerShouldBegin(gestureRecognizer)
+    }
+    @objc private func pageSwiped(_ sender: UISwipeGestureRecognizer) {
+        guard zoomScale <= 1.05 else { return }
+        let forward = axis == .vertical ? sender.direction == .up
+                                       : sender.direction == (rightToLeft ? .right : .left)
+        onStep?(forward ? 1 : -1)
+    }
     @objc private func zoomTapped(_ sender: UITapGestureRecognizer) {
         if zoomScale > 1.1 { setZoomScale(1, animated: true) }
         else {

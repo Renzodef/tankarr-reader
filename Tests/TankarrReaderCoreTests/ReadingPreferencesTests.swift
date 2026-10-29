@@ -27,8 +27,10 @@ final class ReadingPreferencesTests: XCTestCase {
         let options = ReadingPreferences(defaults: defaults).options(book: "book", instance: "server")
         XCTAssertEqual(options.direction, .automatic)
         XCTAssertEqual(options.layout, .automatic)
+        XCTAssertEqual(options.axis, .automatic)
         XCTAssertFalse(options.resolvedRTL(for: book(direction: "unknown", mode: "unknown")))
         XCTAssertFalse(options.resolvedContinuous(for: book(direction: "unknown", mode: "unknown")))
+        XCTAssertEqual(options.resolvedAxis(for: book(direction: "unknown", mode: "unknown")), .horizontal)
     }
 
     func testAutomaticOptionsFollowLatestBookMetadata() {
@@ -65,10 +67,50 @@ final class ReadingPreferencesTests: XCTestCase {
         XCTAssertFalse(manualLayout.resolvedContinuous(for: rtlWebtoon))
     }
 
+    func testAutomaticAxisUsesResolvedLayout() {
+        let manga = book(direction: "rtl", mode: "manga")
+        let webtoon = book(direction: "ltr", mode: "webtoon")
+        XCTAssertEqual(ReadingOptions().resolvedAxis(for: manga), .horizontal)
+        XCTAssertEqual(ReadingOptions().resolvedAxis(for: webtoon), .vertical)
+        XCTAssertEqual(ReadingOptions(layout: .continuous).resolvedAxis(for: manga), .vertical)
+        XCTAssertEqual(ReadingOptions(layout: .paged).resolvedAxis(for: webtoon), .horizontal)
+    }
+
+    func testAxisIsIndependentFromDirectionAndLayout() {
+        for direction in ReaderDirection.allCases {
+            for layout in ReaderLayout.allCases {
+                for mode in ["manga", "webtoon"] {
+                    let volume = book(direction: "rtl", mode: mode)
+                    for axis in [ReaderAxis.vertical, .horizontal] {
+                        let options = ReadingOptions(direction: direction, layout: layout, axis: axis)
+                        let original = ReadingOptions(direction: direction, layout: layout)
+                        XCTAssertEqual(options.resolvedAxis(for: volume), axis)
+                        XCTAssertEqual(options.resolvedRTL(for: volume), original.resolvedRTL(for: volume))
+                        XCTAssertEqual(options.resolvedContinuous(for: volume), original.resolvedContinuous(for: volume))
+                    }
+                }
+            }
+        }
+    }
+
+    func testBuildFivePreferencesPreserveChoicesWhenAxisIsMissing() throws {
+        let preferences = ReadingPreferences(defaults: defaults)
+        let previousKeys = Set(defaults.dictionaryRepresentation().keys)
+        preferences.save(ReadingOptions(), book: "book", instance: "server")
+        let key = try XCTUnwrap(Set(defaults.dictionaryRepresentation().keys).subtracting(previousKeys).first)
+        defaults.set(Data(#"{"direction":"rtl","layout":"continuous"}"#.utf8), forKey: key)
+
+        let migrated = preferences.options(book: "book", instance: "server")
+        XCTAssertEqual(migrated, ReadingOptions(direction: .rtl, layout: .continuous, axis: .automatic))
+        XCTAssertEqual(migrated.resolvedAxis(for: book(direction: "ltr", mode: "manga")), .vertical)
+        preferences.save(migrated, book: "book", instance: "server")
+        XCTAssertEqual(preferences.options(book: "book", instance: "server"), migrated)
+    }
+
     func testPreferencesSurviveReopeningAndSeparateBooksServersAndDemo() throws {
         let preferences = ReadingPreferences(defaults: defaults)
-        let first = ReadingOptions(direction: .rtl, layout: .paged)
-        let second = ReadingOptions(direction: .ltr, layout: .continuous)
+        let first = ReadingOptions(direction: .rtl, layout: .paged, axis: .vertical)
+        let second = ReadingOptions(direction: .ltr, layout: .continuous, axis: .horizontal)
         let otherBook = ReadingOptions(layout: .continuous)
         let demo = ReadingOptions(direction: .ltr)
         preferences.save(first, book: "book", instance: "server-a")
@@ -105,7 +147,9 @@ final class ReadingPreferencesTests: XCTestCase {
         let previousKeys = Set(defaults.dictionaryRepresentation().keys)
         preferences.save(ReadingOptions(direction: .rtl, layout: .continuous), book: "book", instance: "server")
         let key = try XCTUnwrap(Set(defaults.dictionaryRepresentation().keys).subtracting(previousKeys).first)
-        for corrupt in ["not json", "{}", "{\"direction\":\"rtl\",\"layout\":\"unsupported\"}"] {
+        for corrupt in ["not json", "{}", "{\"direction\":\"rtl\",\"layout\":\"unsupported\"}",
+                        #"{"direction":"rtl","layout":"continuous","axis":"unsupported"}"#,
+                        #"{"direction":"rtl","layout":"continuous","axis":42}"#] {
             defaults.set(Data(corrupt.utf8), forKey: key)
             XCTAssertEqual(preferences.options(book: "book", instance: "server"), ReadingOptions())
         }
