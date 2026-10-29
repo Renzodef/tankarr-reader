@@ -21,7 +21,28 @@ final class ReaderUITests: XCTestCase {
         let book = app.staticTexts["Volume 1"].firstMatch
         XCTAssertTrue(book.waitForExistence(timeout: 10))
         book.tap()
+        waitForLoadedPage()
+    }
+
+    private func waitForLoadedPage() {
         XCTAssertTrue(app.images["reader-page"].waitForExistence(timeout: 10))
+        // The page counter changes before decoding and local progress saving finish.
+        let ready = NSPredicate(format: "exists == true AND isEnabled == true")
+        expectation(for: ready, evaluatedWith: app.buttons["Segnalibro"])
+        waitForExpectations(timeout: 10)
+    }
+
+    private func returnToFirstDemoPage() {
+        waitForLoadedPage()
+        // Use discrete controls: a normalized slider drag can miss its endpoint
+        // on iPad, especially when an earlier test left the book at its last page.
+        let previous = app.buttons["Pagina precedente"]
+        for _ in 0..<2 {
+            guard previous.isEnabled else { break }
+            previous.tap()
+            waitForLoadedPage()
+        }
+        XCTAssertTrue(app.staticTexts["1 / 3"].waitForExistence(timeout: 5))
     }
 
     func testDemoReadingProgressAndScreenshots() {
@@ -34,11 +55,11 @@ final class ReaderUITests: XCTestCase {
         capture("02-books")
         openBook()
         // Also make re-runs deterministic without modifying stored files directly.
-        app.sliders["Pagina"].adjust(toNormalizedSliderPosition: 0)
-        XCTAssertTrue(app.staticTexts["1 / 3"].waitForExistence(timeout: 5))
+        returnToFirstDemoPage()
         capture("03-reader")
         app.buttons["Pagina successiva"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
+        waitForLoadedPage()
         app.buttons["Chiudi libro"].tap()
         openBook()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5), "Reading position survives closing the book")
@@ -52,7 +73,7 @@ final class ReaderUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Segnali dal faro"].exists)
         app.staticTexts["Atlante delle nuvole"].firstMatch.tap()
         openBook()
-        app.sliders["Pagina"].adjust(toNormalizedSliderPosition: 0)
+        returnToFirstDemoPage()
         capture("04-webtoon")
         app.buttons["Pagina successiva"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
@@ -61,8 +82,7 @@ final class ReaderUITests: XCTestCase {
     func testDemoBookmarkLifecycleAndIndependentLocalResume() {
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
         openBook()
-        app.sliders["Pagina"].adjust(toNormalizedSliderPosition: 0)
-        XCTAssertTrue(app.staticTexts["1 / 3"].waitForExistence(timeout: 5))
+        returnToFirstDemoPage()
         let bookmarkMenu = app.buttons["Segnalibro"]
         XCTAssertTrue(bookmarkMenu.waitForExistence(timeout: 5))
         // Wait until the displayed image is loaded and the menu becomes enabled.
