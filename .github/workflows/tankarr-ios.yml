@@ -12,7 +12,7 @@ on:
       - 'TankarrReader.xcodeproj/**'
       - 'Package.swift'
       - 'generate_project.py'
-      - 'tests/test_tankarr_ios_*.py'
+      - 'tooling_tests/test_tankarr_ios_*.py'
       - '.github/workflows/tankarr-ios.yml'
   push:
     branches: [main]
@@ -26,7 +26,7 @@ on:
       - 'TankarrReader.xcodeproj/**'
       - 'Package.swift'
       - 'generate_project.py'
-      - 'tests/test_tankarr_ios_*.py'
+      - 'tooling_tests/test_tankarr_ios_*.py'
       - '.github/workflows/tankarr-ios.yml'
   workflow_dispatch:
     inputs:
@@ -66,7 +66,7 @@ jobs:
           "$RUNNER_TEMP/tankarr-ci-venv/bin/python" -m pip install requests==2.34.2 cryptography==50.0.2 pytest==9.2.0
           echo "$RUNNER_TEMP/tankarr-ci-venv/bin" >> "$GITHUB_PATH"
       - name: Test release guards
-        run: python3 -m pytest tests/test_tankarr_ios_ci.py tests/test_tankarr_ios_release.py -q
+        run: python3 -m pytest tooling_tests/test_tankarr_ios_ci.py tooling_tests/test_tankarr_ios_release.py -q
       - name: Test application on both device families
         run: python3 Tools/ci_build.py verify
 

@@ -16,7 +16,7 @@ dello stack domestico vive in `Renzodef/self-hosted`.
 - Le build e i test UI iOS richiedono macOS/Xcode. I test Python dei rilasci
   funzionano anche su Linux e non contattano Apple.
 - `App/`: interfaccia SwiftUI e risorse; `Sources/`: core condiviso;
-  `Tests/`: test Swift; `UITests/`: test UI; `tests/`: test Python dei rilasci.
+  `Tests/`: test Swift; `UITests/`: test UI; `tooling_tests/`: test Python dei rilasci.
 - `generate_project.py` rigenera `TankarrReader.xcodeproj`; eseguirlo dopo
   l'aggiunta o rimozione di sorgenti o risorse gestiti dal generatore.
 - Questo repository non contiene script di produzione del server. Non
@@ -28,7 +28,7 @@ Usare un ambiente Python con `pytest`, `requests` e `cryptography` installati.
 Le versioni CI sono fissate in `.github/workflows/tankarr-ios.yml`.
 
 ```sh
-python3 -m pytest tests/test_tankarr_ios_ci.py tests/test_tankarr_ios_release.py -q
+python3 -m pytest tooling_tests/test_tankarr_ios_ci.py tooling_tests/test_tankarr_ios_release.py -q
 python3 Tools/check_store_assets.py
 ```
 

@@ -2,5 +2,5 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 PYTHON="${PYTHON:-python3}"
-"$PYTHON" -m pytest tests -q
+"$PYTHON" -m pytest tooling_tests -q
 "$PYTHON" Tools/check_store_assets.py
