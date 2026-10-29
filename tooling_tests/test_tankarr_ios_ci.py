@@ -194,6 +194,35 @@ def test_conflicting_local_profile_is_never_replaced(tmp_path):
     assert original.read_bytes() == b"local profile"
 
 
+@pytest.mark.parametrize("version,location", [
+    ("Xcode 15.4\nBuild version 15F31d\n", "Library/MobileDevice/Provisioning Profiles"),
+    ("Xcode 16.0\nBuild version 16A242d\n", "Library/Developer/Xcode/UserData/Provisioning Profiles"),
+    ("Xcode 27.1\nBuild version 27A9275\n", "Library/Developer/Xcode/UserData/Provisioning Profiles"),
+])
+def test_profile_installation_targets_only_the_selected_xcode(tmp_path, version, location):
+    assert ci.provisioning_profile_path(tmp_path, "test-uuid", version) == tmp_path / location / "test-uuid.mobileprovision"
+
+
+def test_modern_xcode_preserves_existing_profile_without_accessing_legacy_directory(tmp_path):
+    legacy = tmp_path / "Library/MobileDevice"
+    legacy.parent.mkdir(parents=True)
+    # An unusable legacy location must never participate in modern profile setup.
+    legacy.write_text("legacy location is not writable by the runner")
+    original = tmp_path / "Library/Developer/Xcode/UserData/Provisioning Profiles/test-uuid.mobileprovision"
+    original.parent.mkdir(parents=True)
+    original.write_bytes(b"existing profile")
+    selected = ci.provisioning_profile_path(tmp_path, "test-uuid", "Xcode 27.1\nBuild version 27A9275\n")
+    assert ci.new_profile_paths([selected], b"existing profile") == []
+    assert legacy.is_file()
+    assert original.read_bytes() == b"existing profile"
+
+
+@pytest.mark.parametrize("version", ["", "xcode-select: error", "Xcode unknown", "Xcode 0.1"])
+def test_unknown_xcode_version_refuses_profile_installation(tmp_path, version):
+    with pytest.raises(ValueError, match="Cannot determine"):
+        ci.provisioning_profile_path(tmp_path, "test-uuid", version)
+
+
 def test_submit_reuses_existing_build_without_archiving(tmp_path, monkeypatch):
     for name, value in environment(RELEASE_ACTION="submit", INPUT_VERSION="1.2.3", INPUT_BUILD="42").items():
         monkeypatch.setenv(name, value)
