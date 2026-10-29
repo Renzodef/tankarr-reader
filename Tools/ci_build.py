@@ -311,6 +311,16 @@ def upload(ipa, version, build):
             env={"API_PRIVATE_KEYS_DIR": str(Path(os.environ["ASC_PRIVATE_KEY_PATH"]).parent)})
 
 
+def export_archive(archive, export, options):
+    # Xcode's /usr/bin/rsync launches its server by name. Homebrew rsync uses
+    # different extended-attribute flags, so both halves must resolve Apple's tools.
+    system_paths = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+    other_paths = [path for path in os.environ.get("PATH", "").split(os.pathsep)
+                   if path and path not in system_paths]
+    run("xcodebuild", "-exportArchive", "-archivePath", archive, "-exportPath", export,
+        "-exportOptionsPlist", options, env={"PATH": os.pathsep.join(system_paths + other_paths)})
+
+
 def distribute():
     action, version, requested_build = release_request(os.environ)
     with credentials() as folder:
@@ -350,8 +360,7 @@ def distribute():
             "provisioningProfiles": {BUNDLE_ID: profile_id}, "uploadSymbols": True,
             "manageAppVersionAndBuildNumber": False,
         }))
-        run("xcodebuild", "-exportArchive", "-archivePath", archive, "-exportPath", export,
-            "-exportOptionsPlist", options)
+        export_archive(archive, export, options)
         ipas = list(export.glob("*.ipa"))
         if len(ipas) != 1:
             raise ValueError("Expected exactly one exported IPA")
