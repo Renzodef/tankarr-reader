@@ -239,6 +239,17 @@ def new_profile_paths(profiles, data):
     return new_paths
 
 
+def provisioning_profile_path(home, profile_id, xcode_version):
+    """Install only where the selected Xcode reads profiles; leave legacy folders alone."""
+    version = re.search(r"(?m)^Xcode ([1-9][0-9]*)(?:\.[0-9]+)*\s*$", xcode_version)
+    if not version:
+        raise ValueError("Cannot determine the selected Xcode provisioning profile location")
+    # Apple-Actions/download-provisioning-profiles documents the Xcode 16 migration.
+    location = ("Library/Developer/Xcode/UserData/Provisioning Profiles" if int(version[1]) >= 16
+                else "Library/MobileDevice/Provisioning Profiles")
+    return home / location / f"{profile_id}.mobileprovision"
+
+
 def prepare_signing(folder):
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.serialization import pkcs12
@@ -262,9 +273,8 @@ def prepare_signing(folder):
     import_path = folder / "distribution.p12"
     private_write(import_path, macos_import_p12(key, cert, chain, import_password))
     old_keychains = shlex.split(run("security", "list-keychains", "-d", "user", capture=True))
-    # Xcode 16+ uses UserData; the legacy location supports older Apple tools too.
-    profiles = [Path.home() / location / f"{profile_id}.mobileprovision" for location in (
-        "Library/Developer/Xcode/UserData/Provisioning Profiles", "Library/MobileDevice/Provisioning Profiles")]
+    profiles = [provisioning_profile_path(Path.home(), profile_id,
+                                         run("xcodebuild", "-version", capture=True, timeout=30))]
     profile_data = profile_path.read_bytes()
     profiles_to_install = new_profile_paths(profiles, profile_data)
     private_write(folder / "state.json", json.dumps({"keychains": old_keychains,
