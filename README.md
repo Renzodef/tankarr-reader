@@ -89,8 +89,21 @@ Il client vive nel repository privato `Renzodef/tankarr-reader`, con progetto
 Xcode, sorgenti e test alla radice. `Renzodef/tankarr` contiene il server;
 `Renzodef/self-hosted` contiene il gateway e la configurazione dello stack.
 Il workflow GitHub Actions
-`Tankarr Reader iOS` verifica gli aggiornamenti del client su `main` e li invia
-al gruppo TestFlight interno. L'invio alla revisione App Store è un'azione
+`Tankarr Reader iOS` usa un runner dedicato sul Mac personale ARM64: verifica
+gli aggiornamenti del client su `main` e li invia al gruppo TestFlight interno.
+Esegue i test del core, degli asset e dell'interfaccia su iPhone e iPad. Parte
+solo dai push pertinenti su `main` o da un avvio manuale, senza trigger sulle
+pull request. Un solo workflow alla volta può eseguire test e distribuzione;
+un nuovo avvio non interrompe quello in corso.
+L'azione manuale predefinita `verify` esegue tutti i test senza distribuzione;
+`testflight` carica una nuova build dopo i test.
+
+Il Mac deve essere acceso, sveglio e con la sessione utente disponibile. Se è
+offline o in stop, i job restano in coda: non c'è un ripiego sui Mac ospitati
+da GitHub e non vengono consumati i relativi minuti. Requisiti e verifica del
+runner sono in [Tools/CI_RUNNER.md](Tools/CI_RUNNER.md).
+
+L'invio alla revisione App Store è un'azione
 manuale separata, con versione e build esplicite: non cambia una versione già
 in revisione. Configurazione, comandi e rinnovo della firma sono descritti in
 [BUILD_AND_UPLOAD.md](AppStore/BUILD_AND_UPLOAD.md).

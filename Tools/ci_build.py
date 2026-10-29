@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Credential-free CI tests and short-lived signing for GitHub's macOS runners."""
+"""Credential-free CI tests and short-lived signing on the dedicated Mac runner."""
 from __future__ import annotations
 
 import argparse
@@ -51,10 +51,26 @@ def select_simulators(payload):
             candidates = [device for device in devices if device.get("isAvailable") is True
                           and device.get("name", "").startswith(family)]
             if candidates:
-                selected.append(sorted(candidates, key=lambda device: device["name"])[0])
+                selected.append(sorted(candidates, key=lambda device: (device.get("state") != "Shutdown", device["name"]))[0])
         if len(selected) == 2:
             return selected
     raise ValueError("No available iPhone and iPad in a common iOS simulator runtime")
+
+
+@contextmanager
+def simulator_session(device):
+    """Reuse local simulators without shutting down one that was already running."""
+    started = False
+    try:
+        if device["state"] != "Booted":
+            run("xcrun", "simctl", "boot", device["udid"], timeout=120)
+            started = True
+        # An installed runtime can still need first-boot data migration.
+        run("xcrun", "simctl", "bootstatus", device["udid"], "-b", timeout=600)
+        yield
+    finally:
+        if started:
+            run("xcrun", "simctl", "shutdown", device["udid"], timeout=120)
 
 
 def verify():
@@ -65,22 +81,15 @@ def verify():
     devices = select_simulators(json.loads(run("xcrun", "simctl", "list", "devices", "available", "--json", capture=True)))
     for family, device in zip(("iphone", "ipad"), devices):
         print(f"UI tests: {device['name']} ({device['udid']})", flush=True)
-        if device["state"] != "Booted":
-            run("xcrun", "simctl", "boot", device["udid"], timeout=120)
-        # Fresh hosted images may spend several minutes in Apple's first-boot
-        # data migration before any app can launch. Keep a bounded allowance.
-        run("xcrun", "simctl", "bootstatus", device["udid"], "-b", timeout=600)
         result = ROOT / "build/results" / f"{family}.xcresult"
         result.parent.mkdir(parents=True, exist_ok=True)
         if result.exists():
             shutil.rmtree(result)
-        try:
+        with simulator_session(device):
             run("xcodebuild", "-project", "TankarrReader.xcodeproj", "-scheme", SCHEME,
                 "-configuration", "Debug", "-destination", f"platform=iOS Simulator,id={device['udid']}",
                 "-derivedDataPath", "build/DerivedData", "-resultBundlePath", result,
                 "-parallel-testing-enabled", "NO", "CODE_SIGNING_ALLOWED=NO", "test")
-        finally:
-            run("xcrun", "simctl", "shutdown", device["udid"], timeout=120)
 
 
 def release_request(env):
@@ -218,6 +227,18 @@ def macos_import_p12(key, certificate, chain, password):
     return pkcs12.serialize_key_and_certificates(b"Tankarr CI", key, certificate, chain, encryption)
 
 
+def new_profile_paths(profiles, data):
+    """Leave identical existing profiles untouched; refuse to replace local files."""
+    new_paths = []
+    for path in profiles:
+        if path.exists():
+            if path.read_bytes() != data:
+                raise ValueError("A different provisioning profile already exists at the installation path")
+        else:
+            new_paths.append(path)
+    return new_paths
+
+
 def prepare_signing(folder):
     from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.serialization import pkcs12
@@ -244,10 +265,10 @@ def prepare_signing(folder):
     # Xcode 16+ uses UserData; the legacy location supports older Apple tools too.
     profiles = [Path.home() / location / f"{profile_id}.mobileprovision" for location in (
         "Library/Developer/Xcode/UserData/Provisioning Profiles", "Library/MobileDevice/Provisioning Profiles")]
-    if any(path.exists() for path in profiles):
-        raise ValueError("Refusing to replace a pre-existing provisioning profile")
+    profile_data = profile_path.read_bytes()
+    profiles_to_install = new_profile_paths(profiles, profile_data)
     private_write(folder / "state.json", json.dumps({"keychains": old_keychains,
-                                                    "profiles": [str(path) for path in profiles]}).encode())
+                                                    "profiles": [str(path) for path in profiles_to_install]}).encode())
     quote = shlex.quote
     security_commands([
         f"create-keychain -p {keychain_password} {quote(str(keychain))}",
@@ -262,8 +283,8 @@ def prepare_signing(folder):
     identities = run("security", "find-identity", "-v", "-p", "codesigning", keychain, capture=True)
     if fingerprint not in identities:
         raise ValueError("Imported distribution certificate is not a valid signing identity")
-    for destination in profiles:
-        private_write(destination, profile_path.read_bytes())
+    for destination in profiles_to_install:
+        private_write(destination, profile_data)
     return team, profile_id, fingerprint, keychain
 
 
