@@ -23,7 +23,7 @@ struct PrivacyView: View {
                 Text("Nessuna pubblicità, SDK di analisi o profilazione. La libreria dimostrativa funziona sul dispositivo, senza account e senza richieste di rete.")
             }
             Section("Gestisci i dati") {
-                Text("Disconnetti, nella schermata Connessione, elimina il profilo e la password salvata. Puoi cancellare le posizioni locali e i segnalibri della demo. Per rimuovere un segnalibro dal server usa l’elenco Segnalibri o il menu del lettore.")
+                Text("Disconnetti, nella schermata Connessione, elimina il profilo e la password salvata. Puoi cancellare le posizioni locali, le preferenze di lettura dei volumi e i segnalibri della demo. Per rimuovere un segnalibro dal server usa l’elenco Segnalibri o il menu del lettore.")
                 Button("Cancella dati di lettura locali", role: .destructive) { confirmClear = true }
                 if cleared { Text("Dati di lettura locali cancellati.").foregroundStyle(.secondary) }
             }
@@ -33,7 +33,7 @@ struct PrivacyView: View {
                 Text("Tankarr Reader 1.0 · Vitoronzo De Francesco").font(.footnote).foregroundStyle(.secondary)
             }
         }.navigationTitle("Privacy e assistenza").navigationBarTitleDisplayMode(.inline)
-            .confirmationDialog("Cancellare posizioni locali e segnalibri della demo?", isPresented: $confirmClear, titleVisibility: .visible) {
+            .confirmationDialog("Cancellare posizioni locali, preferenze di lettura e segnalibri della demo?", isPresented: $confirmClear, titleVisibility: .visible) {
                 Button("Cancella dati locali", role: .destructive) { model.clearProgress(); cleared = true }
             } message: { Text("I segnalibri condivisi restano sul server Tankarr.") }
     }

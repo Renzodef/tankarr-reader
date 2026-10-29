@@ -62,6 +62,7 @@ final class AppModel: ObservableObject {
     private var sessionID = UUID()
     private let covers = NSCache<NSString, UIImage>()
     private let progress = ReadingProgress()
+    private let readingPreferences = ReadingPreferences()
     private let demoBookmarks = DemoBookmarkStore()
 
     init() {
@@ -132,9 +133,15 @@ final class AppModel: ObservableObject {
     func resumePosition(_ book: ReaderBook, openingPage: Int? = nil) -> Int {
         progress.resumePosition(book: book, instance: progressInstance, openingPage: openingPage, bookmark: bookmark(for: book))
     }
+    func readingOptions(_ book: ReaderBook) -> ReadingOptions {
+        readingPreferences.options(book: book.id, instance: progressInstance)
+    }
+    func saveReadingOptions(_ options: ReadingOptions, book: ReaderBook) {
+        readingPreferences.save(options, book: book.id, instance: progressInstance)
+    }
     private var progressInstance: String { isDemo ? DemoCatalog.instanceID : profile.instanceID ?? "local" }
     func clearProgress() {
-        progress.clear(); demoBookmarks.clear()
+        progress.clear(); readingPreferences.clear(); demoBookmarks.clear()
         if isDemo { bookmarks = [] }
     }
     func startDemo() {

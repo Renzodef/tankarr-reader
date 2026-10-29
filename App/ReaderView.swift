@@ -14,7 +14,12 @@ struct ReaderView: View {
     @State private var loadedPage: Int?
     @State private var retry = 0
     @State private var controls = true
-    private var rtl: Bool { book?.direction == "rtl" }
+    @State private var options = ReadingOptions()
+    @State private var showOptions = false
+    @State private var continuousRequestPage = 0
+    @State private var continuousRequestID = 0
+    private var rtl: Bool { book.map { options.resolvedRTL(for: $0) } ?? false }
+    private var continuous: Bool { book.map { options.resolvedContinuous(for: $0) } ?? false }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,12 +44,21 @@ struct ReaderView: View {
                             .disabled(loadedPage == nil || loading || model.bookmarkBusy || model.bookmarksLoading)
                     }
                     Image(systemName: rtl ? "arrow.left" : "arrow.right").font(.caption).accessibilityLabel(rtl ? "Lettura da destra a sinistra" : "Lettura da sinistra a destra")
+                    Button { showOptions = true } label: { Image(systemName: "slider.horizontal.3") }
+                        .accessibilityLabel("Opzioni di lettura").disabled(book == nil)
                 }.padding().background(.ultraThinMaterial)
             }
             ZStack {
                 Color.black
-                if let image { ZoomPage(image: image, identity: "\(bookID):\(loadedPage ?? 0)", webtoon: book?.mode == "webtoon") }
-                if loading { ProgressView().tint(.white).padding(20).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12)) }
+                if continuous, let book {
+                    ContinuousReaderView(bookID: bookID, pageCount: book.pageCount,
+                        requestedPage: continuousRequestPage, requestID: continuousRequestID,
+                        loadImage: { index in try await model.page(bookID, at: index) },
+                        onVisiblePage: visiblePageChanged)
+                } else if let image {
+                    ZoomPage(image: image, identity: "\(bookID):\(loadedPage ?? 0)", webtoon: false)
+                }
+                if loading && !continuous { ProgressView().tint(.white).padding(20).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12)) }
                 if let error {
                     VStack(spacing: 16) {
                         Image(systemName: "wifi.exclamationmark").font(.largeTitle)
@@ -69,21 +83,79 @@ struct ReaderView: View {
                             .disabled(rtl ? page >= book.pageCount - 1 : page <= 0).accessibilityLabel(rtl ? "Pagina successiva" : "Pagina precedente")
                         Spacer()
                         Text("\(page + 1) / \(book.pageCount)").monospacedDigit().font(.callout)
+                            .accessibilityIdentifier("reader-page-counter")
                         Spacer()
                         Button { step(rtl ? -1 : 1) } label: { Image(systemName: "chevron.right").frame(width: 44, height: 36) }
                             .disabled(rtl ? page <= 0 : page >= book.pageCount - 1).accessibilityLabel(rtl ? "Pagina precedente" : "Pagina successiva")
                     }
                     if book.pageCount > 1 {
-                        Slider(value: Binding(get: { Double(page) }, set: { page = Int($0) }), in: 0...Double(book.pageCount - 1), step: 1)
+                        Slider(value: Binding(get: { Double(page) }, set: { navigate(to: Int($0)) }), in: 0...Double(book.pageCount - 1), step: 1)
                             .accessibilityLabel("Pagina").accessibilityValue("\(page + 1) di \(book.pageCount)")
                     }
                 }.padding(.horizontal, 16).padding(.vertical, 8).background(.ultraThinMaterial)
             }
         }.background(.black).preferredColorScheme(.dark)
             .task(id: "metadata-\(retry)") { if book == nil { await loadBook() } }
-            .task(id: "\(book?.id ?? "")-\(page)-\(retry)") { if book != nil { await loadPage() } }
+            .task(id: "\(book?.id ?? "")-\(page)-\(retry)-\(continuous)") { if book != nil && !continuous { await loadPage() } }
+            .onChange(of: options) { _, value in
+                if let book { model.saveReadingOptions(value, book: book) }
+            }
+            .onChange(of: continuous) { _, _ in
+                image = nil; loadedPage = nil; error = nil; loading = true
+                continuousRequestPage = page; continuousRequestID += 1
+            }
+            .sheet(isPresented: $showOptions) { readingOptionsSheet }
     }
-    private func step(_ delta: Int) { guard let book else { return }; page = min(max(0, page + delta), book.pageCount - 1) }
+    private var readingOptionsSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Verso di lettura") {
+                    ForEach(ReaderDirection.allCases) { direction in
+                        Button { options.direction = direction } label: {
+                            optionRow(direction.label, selected: options.direction == direction)
+                        }.accessibilityIdentifier("reader-direction-\(direction.rawValue)")
+                            .accessibilityValue(options.direction == direction ? "Selezionato" : "")
+                    }
+                }
+                Section("Visualizzazione") {
+                    ForEach(ReaderLayout.allCases) { layout in
+                        Button { options.layout = layout } label: {
+                            optionRow(layout.label, selected: options.layout == layout)
+                        }.accessibilityIdentifier("reader-layout-\(layout.rawValue)")
+                            .accessibilityValue(options.layout == layout ? "Selezionato" : "")
+                    }
+                }
+                Section {
+                    Text("Automatico segue le indicazioni del volume. Le tue scelte restano salvate su questo dispositivo per questo volume, senza modificare i segnalibri.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }.navigationTitle("Lettura").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Fine") { showOptions = false } } }
+        }.preferredColorScheme(.dark)
+    }
+    private func optionRow(_ title: String, selected: Bool) -> some View {
+        HStack {
+            Text(title).foregroundStyle(.primary)
+            Spacer()
+            if selected { Image(systemName: "checkmark").accessibilityHidden(true) }
+        }.accessibilityAddTraits(selected ? .isSelected : [])
+    }
+    private func step(_ delta: Int) { navigate(to: page + delta) }
+    private func navigate(to target: Int) {
+        guard let book else { return }
+        let target = min(max(0, target), book.pageCount - 1)
+        guard target != page else { return }
+        page = target
+        if continuous {
+            loadedPage = nil; loading = true
+            continuousRequestPage = target; continuousRequestID += 1
+        }
+    }
+    private func visiblePageChanged(_ index: Int, _ ready: Bool) {
+        guard continuous, let book, (0..<book.pageCount).contains(index) else { return }
+        page = index; loadedPage = ready ? index : nil; loading = !ready
+        if ready { model.savePosition(index, book: bookID) }
+    }
     private func loadBook() async {
         guard model.canBrowse else { return }; loading = true; error = nil
         do {
@@ -91,7 +163,9 @@ struct ReaderView: View {
             guard result.pageCount > 0 else { throw ReaderError.unavailable(422) }
             await model.refreshBookmarks()
             try Task.checkCancellation()
-            page = model.resumePosition(result, openingPage: openingPage); book = result
+            options = model.readingOptions(result)
+            page = model.resumePosition(result, openingPage: openingPage)
+            continuousRequestPage = page; book = result
         } catch { if !Task.isCancelled { self.error = error.localizedDescription; loading = false } }
     }
     private func loadPage() async {

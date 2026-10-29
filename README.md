@@ -2,7 +2,8 @@
 
 Client nativo SwiftUI per il gateway Tankarr Reader dell'self-hosted. iOS 17+,
 iPhone e iPad; nessuna dipendenza esterna. Catalogo con ricerca e copertine,
-elenco dei libri scaricati, lettura con zoom, direzione manga e pagine webtoon.
+elenco dei libri scaricati, lettura a pagine con zoom, direzione selezionabile e
+scorrimento continuo per i webtoon.
 L'ultima pagina letta resta sul dispositivo; i segnalibri vengono salvati sul
 server Tankarr. Nessuna modifica alla libreria,
 nessuna ricerca/download sul server e nessuna chiave amministrativa nell'app.
@@ -11,6 +12,25 @@ La demo inclusa usa le stesse schermate del lettore con tre racconti e immagini
 originali, senza rete o account. I progressi demo sono separati da quelli dei
 server. Anche i segnalibri demo sono locali. Privacy e assistenza sono accessibili
 da Connessione; i dati di lettura locali possono essere cancellati separatamente.
+
+## Opzioni di lettura
+
+Il pulsante **Opzioni di lettura** nel lettore consente di scegliere la direzione
+**Automatico**, **Sinistra → destra** o **Destra → sinistra**, e il formato
+**Automatico**, **A pagine** o **Scorrimento continuo**. Le due opzioni sono
+indipendenti: Automatico segue rispettivamente la direzione e il formato indicati
+dal server. Un volume dichiarato webtoon si apre quindi in scorrimento continuo.
+Le preferenze sono salvate sul dispositivo per volume e server, restano dopo la
+riapertura e sono separate da quelle della demo.
+
+**A pagine** offre zoom con due dita e doppio tocco; la direzione scelta determina
+il verso dei controlli di navigazione. **Scorrimento continuo** mostra tutte le
+pagine del capitolo in sequenza verticale, dall'alto verso il basso. Le immagini
+vengono caricate man mano che servono e quelle lontane dalla posizione corrente
+vengono liberate per contenere l'uso di memoria. Lo zoom è disponibile nel formato
+a pagine. Durante lo scorrimento, la pagina visibile già caricata aggiorna la
+posizione locale ed è quella proposta dal menu Segnalibro; salvare il segnalibro
+resta un'azione esplicita.
 
 ## Segnalibri e ripresa
 

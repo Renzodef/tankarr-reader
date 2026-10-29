@@ -12,23 +12,35 @@ from external sources. There are no purchases, advertising SDKs, or analytics.
 
 On first launch, choose **“Esplora la libreria dimostrativa”** in the connection
 screen. This built-in library works without an account or network connection
-and uses the same library, book-list, page reader, zoom, progress and bookmark controls
+and uses the same library, book-list, reading options, progress and bookmark controls
 as a connected server. All three short stories and vector illustrations were
 created for this app. The demo does not expose the developer's private library.
 
 1. Search for **“Segnali”** to exercise the library search.
-2. Open **“Segnali dal faro”**, then **“Volume 1”**. Pinch or double-tap to zoom;
-   use the arrows or page slider. Close and reopen to verify local progress.
+2. Open **“Segnali dal faro”**, then **“Volume 1”**. In paged mode, pinch or
+   double-tap to zoom; use the arrows or page slider. Close and reopen to verify local progress.
    Use **“Segnalibro”** to save or remove a bookmark. The library's **“Segnalibri”**
    button lists saved pages and opens the selected page. Demo bookmarks stay
    on the device. On a connected server, one bookmark per series is shared with
    Tankarr and other readers/devices. Page turns only update local progress;
    saving a shared bookmark requires an explicit action.
-3. **“Il giardino sospeso”** demonstrates right-to-left navigation.
-4. **“Atlante delle nuvole”** demonstrates vertical pages and scrolling.
+3. **“Il giardino sospeso”** demonstrates right-to-left navigation. Open
+   **“Opzioni di lettura”** to choose the direction: **“Automatico”**,
+   **“Sinistra → destra”** (left to right), or **“Destra → sinistra”** (right to
+   left). The selected direction controls paged navigation.
+4. **“Atlante delle nuvole”** opens with continuous vertical scrolling. In
+   **“Opzioni di lettura”**, the layout choices are **“Automatico”**,
+   **“A pagine”** (paged), and **“Scorrimento continuo”** (continuous). Automatic
+   follows each book's direction and format metadata. Continuous mode presents
+   the chapter's pages in vertical order, loading images as needed and releasing
+   distant ones to limit memory use. The visible loaded page supplies local
+   progress and the page offered by the bookmark menu; bookmarks still require
+   an explicit save. Zoom is available in paged mode. Direction and layout choices
+   are saved locally for each volume and server, separately from the demo.
+   Change either option, close the volume and reopen it to verify persistence.
 5. The network button opens **“Connessione”**. **“Privacy e assistenza”** contains
    the privacy policy, public support link, and a control to erase local reading
-   positions and demo bookmarks. Server bookmarks are removed from the reader
+   positions, per-volume reading preferences and demo bookmarks. Server bookmarks are removed from the reader
    or bookmark list. **“Disconnetti”** removes saved server credentials and configuration.
 
 Connecting a user-operated server requires its HTTPS endpoint, reader username,
