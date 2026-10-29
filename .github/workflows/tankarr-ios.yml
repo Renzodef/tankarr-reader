@@ -1,19 +1,6 @@
 name: Tankarr Reader iOS
 
 on:
-  pull_request:
-    paths:
-      - 'App/**'
-      - 'AppStore/**'
-      - 'Sources/**'
-      - 'Tests/**'
-      - 'UITests/**'
-      - 'Tools/**'
-      - 'TankarrReader.xcodeproj/**'
-      - 'Package.swift'
-      - 'generate_project.py'
-      - 'tooling_tests/test_tankarr_ios_*.py'
-      - '.github/workflows/tankarr-ios.yml'
   push:
     branches: [main]
     paths:
@@ -31,10 +18,10 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'TestFlight oppure invio pubblico della build già provata'
+        description: 'Solo verifica, TestFlight oppure invio pubblico della build già provata'
         type: choice
-        options: [testflight, submit]
-        default: testflight
+        options: [verify, testflight, submit]
+        default: verify
         required: true
       version:
         description: 'Versione X.Y.Z (obbligatoria per submit; altrimenti dal progetto)'
@@ -48,13 +35,18 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: tankarr-reader
+  cancel-in-progress: false
+
 env:
-  DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
 
 jobs:
   verify:
     name: Core, assets, iPhone and iPad
-    runs-on: macos-26
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, macOS, ARM64, tankarr-reader]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -62,7 +54,7 @@ jobs:
           persist-credentials: false
       - name: Install release tooling without credentials
         run: |
-          python3 -m venv "$RUNNER_TEMP/tankarr-ci-venv"
+          /opt/homebrew/bin/python3 -m venv "$RUNNER_TEMP/tankarr-ci-venv"
           "$RUNNER_TEMP/tankarr-ci-venv/bin/python" -m pip install requests==2.34.2 cryptography==50.0.2 pytest==9.2.0
           echo "$RUNNER_TEMP/tankarr-ci-venv/bin" >> "$GITHUB_PATH"
       - name: Test release guards
@@ -75,19 +67,17 @@ jobs:
     needs: verify
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: macos-26
+      (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.action != 'verify'))
+    runs-on: [self-hosted, macOS, ARM64, tankarr-reader]
     timeout-minutes: 75
-    concurrency:
-      group: tankarr-ios-delivery
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: Install release tooling without credentials
         run: |
-          python3 -m venv "$RUNNER_TEMP/tankarr-ci-venv"
+          /opt/homebrew/bin/python3 -m venv "$RUNNER_TEMP/tankarr-ci-venv"
           "$RUNNER_TEMP/tankarr-ci-venv/bin/python" -m pip install requests==2.34.2 cryptography==50.0.2
           echo "$RUNNER_TEMP/tankarr-ci-venv/bin" >> "$GITHUB_PATH"
       - name: Distribute the tested revision

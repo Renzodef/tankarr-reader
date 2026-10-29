@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -37,6 +38,58 @@ def test_requires_both_available_families():
     with pytest.raises(ValueError, match="No available"):
         ci.select_simulators({"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-5":
                                          [device("iPhone 17"), device("iPad Pro", False)]}})
+
+
+def test_prefers_idle_simulators_instead_of_an_already_running_device():
+    active = {**device("iPhone 16"), "state": "Booted"}
+    payload = {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-27-0":
+                           [active, device("iPhone 17"), device("iPad Pro")]}}
+    assert ci.select_simulators(payload)[0]["name"] == "iPhone 17"
+
+
+@pytest.mark.parametrize("was_booted", [True, False])
+def test_simulator_session_restores_prior_boot_state_on_test_failure(monkeypatch, was_booted):
+    calls = []
+    simulator = {**device("iPhone 17"), "state": "Booted" if was_booted else "Shutdown"}
+    monkeypatch.setattr(ci, "run", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(RuntimeError, match="test failure"):
+        with ci.simulator_session(simulator):
+            raise RuntimeError("test failure")
+    operations = [call[2] for call in calls]
+    assert operations == (["bootstatus"] if was_booted else ["boot", "bootstatus", "shutdown"])
+
+
+def test_simulator_started_by_ci_is_stopped_after_boot_timeout(monkeypatch):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        calls.append(args)
+        if args[2] == "bootstatus":
+            raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+
+    monkeypatch.setattr(ci, "run", fake_run)
+    with pytest.raises(subprocess.TimeoutExpired):
+        with ci.simulator_session(device("iPhone 17")):
+            pytest.fail("Tests must not start before the simulator is ready")
+    assert [call[2] for call in calls] == ["boot", "bootstatus", "shutdown"]
+
+
+def test_workflow_only_runs_main_on_the_serial_dedicated_mac():
+    document = (SOURCE.parents[1] / ".github/workflows/tankarr-ios.yml").read_text()
+    events = re.search(r"(?ms)^on:\n(.*?)(?=^\S)", document).group(1)
+    assert set(re.findall(r"(?m)^  ([a-z_]+):", events)) == {"push", "workflow_dispatch"}
+    assert re.search(r"(?m)^    branches: \[main\]$", events)
+    targets = re.findall(r"(?m)^    runs-on: \[([^\]]+)\]$", document)
+    assert len(targets) == document.count("runs-on:") == 2
+    for target in targets:
+        assert {label.strip() for label in target.split(",")} == {"self-hosted", "macOS", "ARM64", "tankarr-reader"}
+    concurrency = re.search(r"(?ms)^concurrency:\n(.*?)(?=^\S)", document).group(1)
+    assert re.search(r"(?m)^  group: tankarr-reader$", concurrency)
+    assert re.search(r"(?m)^  cancel-in-progress: false$", concurrency)
+    assert "options: [verify, testflight, submit]" in events
+    assert "inputs.action != 'verify'" in document
+    assert "/Applications/Xcode.app/Contents/Developer" in document
+    assert document.count("/opt/homebrew/bin/python3 -m venv") == 2
 
 
 @pytest.mark.parametrize("changes", [
@@ -114,6 +167,31 @@ def test_cleanup_removes_keys_and_profiles_even_if_security_fails(tmp_path, monk
         ci.cleanup()
     assert not folder.exists()
     assert not profile.exists()
+
+
+def test_existing_identical_profile_is_preserved_by_cleanup(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    original = tmp_path / "existing.mobileprovision"
+    new_profile = tmp_path / "new.mobileprovision"
+    payload = b"same installed provisioning profile"
+    original.write_bytes(payload)
+    installed = ci.new_profile_paths([original, new_profile], payload)
+    assert installed == [new_profile]
+    new_profile.write_bytes(payload)
+    folder = ci.signing_dir()
+    folder.mkdir()
+    (folder / "state.json").write_text(json.dumps({"profiles": [str(path) for path in installed]}))
+    ci.cleanup()
+    assert original.read_bytes() == payload
+    assert not new_profile.exists()
+
+
+def test_conflicting_local_profile_is_never_replaced(tmp_path):
+    original = tmp_path / "existing.mobileprovision"
+    original.write_bytes(b"local profile")
+    with pytest.raises(ValueError, match="different provisioning profile"):
+        ci.new_profile_paths([original], b"CI profile")
+    assert original.read_bytes() == b"local profile"
 
 
 def test_submit_reuses_existing_build_without_archiving(tmp_path, monkeypatch):
