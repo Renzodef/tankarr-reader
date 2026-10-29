@@ -238,6 +238,23 @@ def test_submit_reuses_existing_build_without_archiving(tmp_path, monkeypatch):
     assert not ci.signing_dir().exists()
 
 
+@pytest.mark.parametrize("original_path", ["/opt/homebrew/bin:/custom/tools", "", "/usr/bin::/opt/homebrew/bin"])
+def test_export_prefers_apple_rsync_for_both_client_and_server(tmp_path, monkeypatch, original_path):
+    monkeypatch.setenv("PATH", original_path)
+    calls = []
+    monkeypatch.setattr(ci, "run", lambda *args, **kwargs: calls.append((args, kwargs)))
+    archive, export, options = (tmp_path / name for name in ("app.xcarchive", "export", "options.plist"))
+    ci.export_archive(archive, export, options)
+    args, kwargs = calls[0]
+    assert args == ("xcodebuild", "-exportArchive", "-archivePath", archive,
+                    "-exportPath", export, "-exportOptionsPlist", options)
+    paths = kwargs["env"]["PATH"].split(ci.os.pathsep)
+    assert paths[:4] == ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+    assert "" not in paths
+    assert all(path in paths for path in original_path.split(":") if path)
+    assert ci.os.environ["PATH"] == original_path  # Other CI tools keep the venv/Homebrew PATH.
+
+
 def test_temporary_p12_uses_macos_compatible_envelope_and_preserves_identity():
     from datetime import datetime, timedelta, timezone
     from cryptography import x509
