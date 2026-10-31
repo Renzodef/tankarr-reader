@@ -133,7 +133,7 @@ public struct ReaderBookmark: Codable, Identifiable, Hashable {
     }
 }
 public struct LibraryResponse: Decodable { public let items: [LibrarySeries] }
-public struct LibrarySeries: Decodable, Identifiable, Hashable {
+public struct LibrarySeries: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let title: String
     public let description: String
@@ -143,7 +143,7 @@ public struct LibrarySeries: Decodable, Identifiable, Hashable {
     public let coverPath: String
 }
 public struct BooksResponse: Decodable { public let books: [LibraryBook] }
-public struct LibraryBook: Decodable, Identifiable, Hashable {
+public struct LibraryBook: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let label: String
     public let title: String
@@ -152,7 +152,7 @@ public struct LibraryBook: Decodable, Identifiable, Hashable {
     public let unit: String
     public let language: String
 }
-public struct ReaderBook: Decodable {
+public struct ReaderBook: Codable, Sendable {
     public let id: String
     public let seriesTitle: String
     public let title: String
@@ -174,10 +174,17 @@ public struct ReaderBook: Decodable {
     }
 }
 
-public final class RefuseRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+public final class RefuseRedirects: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     public func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                            newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         completionHandler(nil) // Never carry the reader password to another endpoint.
+    }
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {}
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
+                           totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        if totalBytesWritten > OfflineStore.maxPageBytes || totalBytesExpectedToWrite > OfflineStore.maxPageBytes {
+            downloadTask.cancel()
+        }
     }
 }
 
@@ -208,6 +215,23 @@ public final class ReaderAPI: @unchecked Sendable {
     public func get<T: Decodable>(_ path: String, as type: T.Type = T.self, timeout: TimeInterval = 35) async throws -> T {
         let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(T.self, from: await data(path, timeout: timeout))
+    }
+    /// Download one page to a temporary file first; never buffer a whole volume.
+    /// The same authenticated session refuses redirects and verifies TLS.
+    public func downloadPage(book: String, index: Int) async throws -> Data {
+        guard index >= 0 else { throw ReaderError.invalidIdentifier }
+        let request = try Endpoint.request(base: base,
+            path: "/v1/books/\(try Endpoint.identifier(book))/pages/\(index)",
+            username: username, password: password, timeout: 90)
+        let (file, response) = try await session.download(for: request)
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Task.checkCancellation()
+        guard let http = response as? HTTPURLResponse else { throw ReaderError.unavailable(0) }
+        if http.statusCode == 401 { throw ReaderError.unauthorized }
+        guard http.statusCode == 200 else { throw ReaderError.unavailable(http.statusCode) }
+        let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard size > 0, size <= OfflineStore.maxPageBytes else { throw OfflineError.invalidPage }
+        return try Data(contentsOf: file, options: .mappedIfSafe)
     }
     public func saveBookmark(series: String, book: String, page: Int) async throws -> ReaderBookmark {
         guard page >= 0 else { throw ReaderError.invalidIdentifier }

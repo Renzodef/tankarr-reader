@@ -8,7 +8,7 @@ struct TankarrReaderApp: App {
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
-            LibraryView().environmentObject(model).tint(.orange)
+            LibraryView().environmentObject(model).environmentObject(model.downloads).tint(.orange)
                 .environment(\.locale, model.languageLocale)
                 .task { await model.restore() }
                 .onChange(of: scenePhase) { _, phase in
@@ -62,11 +62,15 @@ final class AppModel: ObservableObject {
     @Published var bookmarkBusy = false
     @Published private var bookmarkFailure: (format: String, error: Error)?
     @Published var readingStateWritable = false
-    var canBrowse: Bool { api != nil || isDemo }
-    var canUseBookmarks: Bool { isDemo || readingStateWritable }
+    @Published private(set) var offlineMode = false
+    let downloads = DownloadManager()
+    var canBrowse: Bool { api != nil || isDemo || offlineMode }
+    var canUseBookmarks: Bool { !offlineMode && (isDemo || readingStateWritable) }
+    var canDownload: Bool { !offlineMode && (api != nil || isDemo) }
     var error: String? { connectionError.map { $0.localizedDescription } }
     var bookmarkError: String? { bookmarkFailure.map { L10n.format($0.format, $0.error.localizedDescription) } }
     var endpointLabel: String {
+        if offlineMode { return L10n.text("Lettura offline") }
         if isDemo { return L10n.text("Demo sul dispositivo") }
         return canBrowse ? endpointHost ?? L10n.text("Connesso") : L10n.text("Non connesso")
     }
@@ -99,7 +103,16 @@ final class AppModel: ObservableObject {
     func restore() async {
         guard !restored else { return }; restored = true
         if UserDefaults.standard.bool(forKey: "demoMode") || ProcessInfo.processInfo.arguments.contains("--demo") {
-            startDemo(); return
+            await startDemo()
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--offline-demo") { await useOffline() }
+            #endif
+            return
+        }
+        await downloads.activate(offlineAccount(profile))
+        if !downloads.items.isEmpty { offlineMode = true; library = downloadedSeries }
+        if UserDefaults.standard.bool(forKey: "offlineReading"), !downloads.items.isEmpty {
+            await useOffline(); return
         }
         if let password = PasswordStore.read() { await connect(profile, password: password) }
         else { showConnection = true }
@@ -114,28 +127,59 @@ final class AppModel: ObservableObject {
             var accepted = newProfile; accepted.instanceID = status.instanceId
             let stored = try JSONEncoder().encode(accepted)
             UserDefaults.standard.set(stored, forKey: "serverProfile")
-            profile = accepted; api = client; isDemo = false; library = result.items; covers.removeAllObjects()
+            await downloads.activate(offlineAccount(accepted))
+            profile = accepted; api = client; isDemo = false; offlineMode = false; library = result.items; covers.removeAllObjects()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
             UserDefaults.standard.removeObject(forKey: "demoMode")
+            UserDefaults.standard.removeObject(forKey: "offlineReading")
             endpointHost = client.base.host
             showConnection = false
             await refreshBookmarks()
-        } catch { connectionError = error }
+        } catch {
+            connectionError = error
+            if api == nil, !downloads.items.isEmpty {
+                offlineMode = true; library = downloadedSeries; showConnection = false
+            }
+        }
     }
     func refresh() async {
-        if isDemo { startDemo(); return }
+        if isDemo { await startDemo(); return }
         guard let password = PasswordStore.read() else { showConnection = true; return }
         await connect(profile, password: password) // Re-evaluate LAN/HTTPS availability on refresh.
     }
-    func disconnect() {
+    func disconnect() async {
+        do {
+            try await downloads.removeAll()
+            if let saved = offlineAccount(profile), saved != downloads.account {
+                try await downloads.store.removeAll(account: saved)
+            }
+        }
+        catch { connectionError = error; return }
+        await downloads.activate(nil)
         PasswordStore.remove(); UserDefaults.standard.removeObject(forKey: "serverProfile")
         UserDefaults.standard.removeObject(forKey: "demoMode")
-        api = nil; isDemo = false; library = []; covers.removeAllObjects(); profile = ServerProfile()
+        UserDefaults.standard.removeObject(forKey: "offlineReading")
+        api = nil; isDemo = false; offlineMode = false; library = []; covers.removeAllObjects(); profile = ServerProfile()
         resetBookmarkSession(); readingStateWritable = false
         endpointHost = nil; connectionError = nil; showConnection = true
     }
+    private func offlineAccount(_ profile: ServerProfile) -> OfflineAccount? {
+        guard let instance = profile.instanceID, !profile.username.isEmpty else { return nil }
+        return OfflineAccount(instance: instance, username: profile.username)
+    }
+    private var downloadedSeries: [LibrarySeries] {
+        var seen = Set<String>()
+        return downloads.items.filter { $0.complete && seen.insert($0.series.id).inserted }.map(\.series)
+    }
+    func useOffline() async {
+        await downloads.pauseAll()
+        api = nil; offlineMode = true; library = downloadedSeries; covers.removeAllObjects()
+        resetBookmarkSession(); readingStateWritable = false; connectionError = nil; showConnection = false
+        UserDefaults.standard.set(true, forKey: "offlineReading")
+    }
     func cover(_ id: String) async -> UIImage? {
         if let cached = covers.object(forKey: id as NSString) { return cached }
+        if offlineMode { return nil }
         if isDemo, let series = DemoCatalog.series.first(where: { $0.id == id }) {
             let image = DemoArtwork.cover(series)
             covers.setObject(image, forKey: id as NSString, cost: 600 * 900 * 4)
@@ -169,12 +213,14 @@ final class AppModel: ObservableObject {
         progress.clear(); readingPreferences.clear(); demoBookmarks.clear()
         if isDemo { bookmarks = [] }
     }
-    func startDemo() {
+    func startDemo() async {
         guard !busy else { return }
-        api = nil; isDemo = true; library = DemoCatalog.series; covers.removeAllObjects()
+        await downloads.activate(OfflineAccount(instance: DemoCatalog.instanceID, username: "demo"))
+        api = nil; isDemo = true; offlineMode = false; library = DemoCatalog.series; covers.removeAllObjects()
         resetBookmarkSession(); readingStateWritable = false; bookmarks = demoBookmarks.all()
         connectionError = nil; endpointHost = nil; showConnection = false
         UserDefaults.standard.set(true, forKey: "demoMode")
+        UserDefaults.standard.removeObject(forKey: "offlineReading")
     }
     private func resetBookmarkSession() {
         sessionID = UUID(); bookmarks = []; bookmarkFailure = nil; bookmarksLoading = false
@@ -243,17 +289,25 @@ final class AppModel: ObservableObject {
         }
     }
     func books(for series: String) async throws -> [LibraryBook] {
+        if offlineMode { return downloads.items.filter { $0.complete && $0.series.id == series }.map(\.listing) }
         if isDemo { return try DemoCatalog.books(for: series) }
         guard let api else { throw ReaderError.unavailable(0) }
         let result: BooksResponse = try await api.get("/v1/series/\(try Endpoint.identifier(series))")
         return result.books
     }
     func book(_ id: String) async throws -> ReaderBook {
+        if let account = downloads.account, let cached = try await downloads.store.book(id, account: account) { return cached }
+        if offlineMode { throw OfflineError.notDownloaded }
         if isDemo { return try DemoCatalog.book(id) }
         guard let api else { throw ReaderError.unavailable(0) }
         return try await api.get("/v1/books/\(try Endpoint.identifier(id))")
     }
     func page(_ id: String, at index: Int) async throws -> UIImage {
+        if let account = downloads.account, let data = try await downloads.store.page(id, index: index, account: account) {
+            guard let image = UIImage(data: data) else { throw OfflineError.incomplete }
+            return image
+        }
+        if offlineMode { throw OfflineError.notDownloaded }
         if isDemo { return DemoArtwork.page(try DemoCatalog.page(id, at: index)) }
         guard let api else { throw ReaderError.unavailable(0) }
         let data = try await api.data("/v1/books/\(try Endpoint.identifier(id))/pages/\(index)")

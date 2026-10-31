@@ -178,7 +178,9 @@ struct ReaderView: View {
         do {
             let result = try await model.book(bookID)
             guard result.pageCount > 0 else { throw ReaderError.unavailable(422) }
-            await model.refreshBookmarks()
+            // A downloaded book opens immediately, even if the server has just
+            // become unreachable and the last online session is still selected.
+            if model.downloads.item(bookID)?.complete != true { await model.refreshBookmarks() }
             try Task.checkCancellation()
             options = model.readingOptions(result)
             page = model.resumePosition(result, openingPage: openingPage)

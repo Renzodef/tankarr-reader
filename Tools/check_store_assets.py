@@ -27,6 +27,8 @@ def main():
                and "CA92.1" in item["NSPrivacyAccessedAPITypeReasons"] for item in privacy["NSPrivacyAccessedAPITypes"])
     project = (ROOT / "TankarrReader.xcodeproj/project.pbxproj").read_text()
     assert 'App/PrivacyInfo.xcprivacy' in project, "Privacy manifest must be included in the app target"
+    assert any(item["NSPrivacyAccessedAPIType"] == "NSPrivacyAccessedAPICategoryDiskSpace"
+               and "E174.1" in item["NSPrivacyAccessedAPITypeReasons"] for item in privacy["NSPrivacyAccessedAPITypes"])
     print("Store metadata, opaque 1024px icon and bundled privacy manifest: OK")
 
 
