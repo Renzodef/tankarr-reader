@@ -3,8 +3,10 @@ import UniformTypeIdentifiers
 
 struct LibraryView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var downloads: DownloadManager
     @State private var search = ""
     @State private var showBookmarks = false
+    @State private var showDownloads = false
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16)]
     private var filtered: [LibrarySeries] {
         search.isEmpty ? model.library : model.library.filter { $0.title.localizedStandardContains(search) }
@@ -20,7 +22,7 @@ struct LibraryView: View {
                 else if !model.canBrowse {
                     ContentUnavailableView(L10n.text("La tua libreria, con te"), systemImage: "books.vertical", description: Text(L10n.text("Collega il lettore al tuo server Tankarr.")))
                     Button(L10n.text("Configura connessione")) { model.showConnection = true }.buttonStyle(.borderedProminent)
-                    Button(L10n.text("Esplora la demo")) { model.startDemo() }.padding(.top, 8)
+                    Button(L10n.text("Esplora la demo")) { Task { await model.startDemo() } }.padding(.top, 8)
                 } else {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
                         ForEach(filtered) { series in
@@ -42,6 +44,10 @@ struct LibraryView: View {
             .refreshable { await model.refresh() }
             .navigationDestination(for: LibrarySeries.self) { SeriesView(series: $0) }
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showDownloads = true } label: { Image(systemName: "arrow.down.circle") }
+                        .accessibilityLabel(L10n.text("Download")).accessibilityIdentifier("downloads")
+                }
                 if model.canUseBookmarks {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showBookmarks = true } label: { Image(systemName: "bookmark") }.accessibilityLabel(L10n.text("Segnalibri"))
@@ -62,6 +68,7 @@ struct LibraryView: View {
             }
         }.sheet(isPresented: $model.showConnection) { ConnectionView() }
             .sheet(isPresented: $showBookmarks) { BookmarksView() }
+            .sheet(isPresented: $showDownloads) { DownloadsView() }
     }
 }
 
@@ -135,7 +142,8 @@ struct SeriesView: View {
             if let error { Section { Text(error); Button(L10n.text("Riprova")) { Task { await load() } } } }
             Section(L10n.text("Disponibili da leggere")) {
                 ForEach(books) { book in
-                    Button { selected = book } label: {
+                    HStack(spacing: 12) {
+                      Button { selected = book } label: {
                         HStack(spacing: 12) {
                             Image(systemName: model.position(book.id) > 0 ? "book.pages" : "book.closed").foregroundStyle(.orange)
                             VStack(alignment: .leading, spacing: 3) {
@@ -146,10 +154,21 @@ struct SeriesView: View {
                             Text(book.language.uppercased()).font(.caption2).foregroundStyle(.secondary)
                             Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                         }
+                      }.buttonStyle(.plain)
+                      DownloadBookControl(series: series, book: book)
                     }
                 }
             }
         }.navigationTitle(series.title).navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if model.canDownload && !books.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(L10n.text("Scarica tutti")) {
+                            model.downloads.enqueue(series: series, books: books, api: model.api, demo: model.isDemo)
+                        }.accessibilityIdentifier("download-series")
+                    }
+                }
+            }
             .task { await load() }.refreshable { await load() }
             .fullScreenCover(item: $selected) { ReaderView(bookID: $0.id) }
     }
@@ -168,6 +187,7 @@ struct ConnectionView: View {
     @State private var password = ""
     @State private var importing = false
     @State private var importError: String?
+    @State private var confirmDisconnect = false
     var body: some View {
         NavigationStack {
             Form {
@@ -182,7 +202,7 @@ struct ConnectionView: View {
                     Text(L10n.text("La lingua dell’interfaccia è salvata su questo dispositivo. Sistema segue la lingua preferita dell’iPhone o iPad fra italiano e inglese; le altre lingue usano l’inglese. Non cambia la lingua dei libri."))
                 }
                 Section {
-                    Button(L10n.text("Esplora la libreria dimostrativa")) { model.startDemo(); dismiss() }.disabled(model.busy)
+                    Button(L10n.text("Esplora la libreria dimostrativa")) { Task { await model.startDemo(); dismiss() } }.disabled(model.busy)
                 } footer: { Text(L10n.text("Tre racconti originali per provare ricerca, lettura e zoom. Funziona senza account e senza connessione.")) }
                 Section(L10n.text("Server")) {
                     TextField(L10n.text("Indirizzo locale (opzionale)"), text: $profile.localAddress).keyboardType(.URL)
@@ -203,10 +223,19 @@ struct ConnectionView: View {
                 }
                 if let error = importError ?? model.error { Section { Text(error).foregroundStyle(.red) } }
                 Section { NavigationLink(L10n.text("Privacy e assistenza")) { PrivacyView() } }
-                if model.canBrowse { Section { Button(L10n.text("Disconnetti"), role: .destructive) { model.disconnect(); password = ""; profile = ServerProfile() } } }
+                if model.canBrowse {
+                    Section {
+                        Button(L10n.text("Disconnetti"), role: .destructive) { confirmDisconnect = true }.disabled(model.busy)
+                    }
+                }
             }.navigationTitle(L10n.text("Connessione")).navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("Chiudi")) { dismiss() } } }
                 .onAppear { profile = model.profile; password = PasswordStore.read() ?? "" }
+                .confirmationDialog(L10n.text("Disconnettere ed eliminare i download di questo account?"), isPresented: $confirmDisconnect, titleVisibility: .visible) {
+                    Button(L10n.text("Disconnetti"), role: .destructive) {
+                        Task { await model.disconnect(); password = ""; profile = model.profile }
+                    }
+                } message: { Text(L10n.text("La libreria e i segnalibri sul server restano invariati.")) }
                 .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
                     do {
                         let url = try result.get(); let granted = url.startAccessingSecurityScopedResource()

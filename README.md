@@ -6,7 +6,8 @@ elenco dei libri scaricati, lettura a pagine con zoom e scorrimento continuo,
 verticale oppure orizzontale, con direzione selezionabile. Interfaccia italiana
 e inglese.
 L'ultima pagina letta resta sul dispositivo; i segnalibri vengono salvati sul
-server Tankarr. Nessuna modifica alla libreria,
+server Tankarr. Capitoli e volumi possono essere scaricati sul dispositivo per
+la lettura offline. Nessuna modifica alla libreria,
 nessuna ricerca/download sul server e nessuna chiave amministrativa nell'app.
 
 La demo inclusa usa le stesse schermate del lettore con tre racconti e immagini
@@ -74,6 +75,51 @@ Il gateway deve dichiarare `reading_state_writable: true` e offrire
 `X-Tankarr-Reader: 1`; PUT invia JSON e DELETE non ha un corpo.
 Gli endpoint amministrativi restano inaccessibili.
 I gateway precedenti continuano a offrire lettura e ripresa locale.
+
+## Download sul dispositivo
+
+Nell'elenco di una serie, la freccia accanto a un capitolo o volume avvia il
+download locale. **Scarica tutti** mette in coda i libri della serie, uno alla
+volta. Non avvia ricerche né acquisizioni sul server: copia soltanto pagine già
+accessibili all'account lettore, usando gli stessi endpoint autenticati.
+
+Il pulsante **Download** nella libreria mostra avanzamento, spazio occupato e
+copie **Disponibili offline**. Si può mettere in pausa, riprendere o rimuovere
+un download, oppure rimuoverli tutti. Una copia è pronta solo dopo il salvataggio
+di tutte le pagine; i trasferimenti interrotti conservano quelle già ricevute e
+**Riprendi** scarica soltanto le mancanti o danneggiate. Se la rete o il disco
+falliscono, la coda si ferma senza ritentare indefinitamente. Dopo la chiusura
+dell'app si riprendono manualmente i download incompleti; la coda non ancora
+iniziata può essere selezionata di nuovo con **Scarica tutti**.
+
+Tenere l'app aperta durante il trasferimento: non viene promesso il completamento
+in background o a schermo bloccato. Il controllo dello spazio lascia almeno
+256 MiB liberi e riserva spazio per la pagina temporanea. Le pagine sono limitate
+a 64 MiB ciascuna, validate come immagini e salvate con checksum; non viene
+caricato in memoria un intero volume.
+
+**Usa senza connessione** apre solo le copie complete; **Ricollega al server**
+torna alla libreria online. Le copie si leggono anche dopo aver chiuso e riaperto
+l'app, in modalità a pagine o continua e con tutte le direzioni disponibili.
+La pagina raggiunta continua a essere salvata localmente. I segnalibri condivisi
+richiedono la connessione e un salvataggio esplicito: non vengono accodate
+scritture offline che potrebbero sovrascrivere quelle di altri dispositivi.
+
+I download sono separati per identità del server e nome utente: LAN e HTTPS dello
+stesso server condividono le copie, altri account no. I dati stanno in
+Application Support, protetti dal dispositivo ed esclusi dai backup iCloud;
+nessuna password viene scritta nei manifest. **Disconnetti** chiede conferma e
+rimuove anche le copie dell'account. La cancellazione dei download non modifica
+i file, i segnalibri o la libreria del server. Le copie sono una fotografia dei
+libri: per aggiornarle dopo una sostituzione sul server, rimuoverle e scaricarle
+nuovamente. La demo permette di provare gli stessi controlli senza credenziali.
+
+Test: `OfflineDownloadsTests` verifica interruzione/ripresa, riapertura senza
+rete, spazio insufficiente, integrità, isolamento account, cancellazione e
+risposte tardive. `testOfflineDownloadRelaunchProgressAndRemoval` prova il ciclo
+completo su iPhone e iPad: download, lettura esclusivamente da disco, riavvio,
+progressi, scorrimento continuo e rimozione. Il manifest privacy dichiara il
+controllo dello spazio disco (`E174.1`) per queste operazioni visibili all'utente.
 
 ## Connessione
 

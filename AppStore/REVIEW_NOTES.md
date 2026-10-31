@@ -56,7 +56,19 @@ created for this app. The demo does not expose the developer's private library.
    the privacy policy, public support link, and a control to erase local reading
    positions, per-volume reading preferences and demo bookmarks. Server bookmarks are removed from the reader
    or bookmark list. **“Disconnect”** (**“Disconnetti”**) removes saved server
-   credentials and configuration.
+   credentials, configuration and the current account's downloaded copies,
+   after confirmation.
+7. Tap the download arrow next to a volume in the demo, or **Download all**
+   in a series. Open **Downloads** from the library, wait for **Available
+   offline**, then choose **Use offline**. The book opens from on-device pages,
+   with paged/continuous reading and local progress. Close and reopen it to
+   check persistence. Downloads can be paused, resumed and removed locally.
+   **Reconnect to server** leaves offline mode (in demo, returns to the demo).
+   Transfers require the app to remain open; incomplete copies are not offered
+   as offline books. Server bookmarks require a connection and explicit action.
+   Downloads only copy content from the user's configured library; they never
+   search or acquire content from third-party sources. Copies are private,
+   separated by server/account, and excluded from device backups.
 
 Connecting a user-operated server requires its HTTPS endpoint, reader username,
 and password; it uses HTTP Basic authentication over validated TLS. Local HTTP is

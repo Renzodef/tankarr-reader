@@ -117,6 +117,60 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
     }
 
+    func testOfflineDownloadRelaunchProgressAndRemoval() {
+        let id = "demo-lighthouse-volume-1"
+        app.buttons["downloads"].tap()
+        if app.buttons["remove-all-downloads"].exists {
+            app.buttons["remove-all-downloads"].tap()
+            app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
+            XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+        }
+        app.buttons["Chiudi"].tap()
+        app.staticTexts["Segnali dal faro"].firstMatch.tap()
+        openBook()
+        setReadingOptions(direction: "ltr", layout: "paged", axis: "horizontal")
+        returnToFirstDemoPage()
+        app.buttons["Chiudi libro"].tap()
+        app.buttons["download-\(id)"].tap()
+        XCTAssertTrue(app.buttons["remove-download-\(id)"].waitForExistence(timeout: 30))
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["downloads"].tap()
+        XCTAssertTrue(app.staticTexts["Disponibile offline"].waitForExistence(timeout: 10))
+        app.buttons["use-offline"].tap()
+        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["offline-book-\(id)"].tap()
+        XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Segnalibro"].exists, "Offline reading must not promise a server bookmark write")
+        app.buttons["Pagina successiva"].tap()
+        XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 10))
+        // Closing waits for the local page save before checking a cold launch.
+        sleep(1)
+        app.buttons["Chiudi libro"].tap()
+        app.terminate()
+        // This debug-only mode disables generated demo pages: reads must come from disk.
+        app.launchArguments += ["--offline-demo"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 15))
+        app.buttons["downloads"].tap()
+        app.buttons["offline-book-\(id)"].tap()
+        XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 10))
+        app.buttons["Opzioni di lettura"].tap()
+        tapOption("reader-layout-continuous")
+        tapOption("reader-axis-vertical")
+        app.buttons["Fine"].tap()
+        XCTAssertTrue(app.collectionViews["reader-continuous"].waitForExistence(timeout: 10))
+        app.buttons["Pagina successiva"].tap()
+        XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
+        capture("offline-download-reader")
+        app.buttons["Chiudi libro"].tap()
+        app.buttons["remove-all-downloads"].tap()
+        app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["offline-book-\(id)"].exists)
+    }
+
     func testDemoBookmarkLifecycleAndIndependentLocalResume() {
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
         openBook()
