@@ -171,4 +171,66 @@ final class OfflineDownloadsTests: XCTestCase {
             } catch { XCTAssertEqual(error as? OfflineError, .invalidPage) }
         }
     }
+
+    func testOfflineBookmarksAndCoversSurviveRelaunchAndStayAccountScoped() async throws {
+        let disk = store()
+        _ = try await download(disk)
+        let saved = ReaderBookmark(seriesId: series.id, seriesTitle: series.title, bookId: book.id,
+            label: listing.label, pageIndex: 1, updatedAt: "today")
+        try await disk.saveBookmarks([saved], account: account)
+        try await disk.saveCover(Data("thumbnail".utf8), seriesID: series.id, account: account)
+        let reopened = store()
+        let bookmarks = try await reopened.bookmarks(account: account)
+        let cover = try await reopened.cover(seriesID: series.id, account: account)
+        let records = try await reopened.downloads(account: account)
+        XCTAssertEqual(bookmarks, [saved]); XCTAssertEqual(cover, Data("thumbnail".utf8))
+        XCTAssertEqual(records.count, 1, "Metadata must not become a book")
+        let other = OfflineAccount(instance: "other", username: "reader")
+        let foreign = try await reopened.bookmarks(account: other)
+        let foreignCover = try await reopened.cover(seriesID: series.id, account: other)
+        XCTAssertTrue(foreign.isEmpty); XCTAssertNil(foreignCover)
+        let folder = root.appendingPathComponent(account.key).appendingPathComponent(".metadata")
+        let mode = try FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent("bookmarks.json").path)[.posixPermissions] as? NSNumber
+        XCTAssertEqual(mode?.intValue, 0o600)
+        XCTAssertEqual(try folder.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    }
+
+    func testOfflineScopeContainsOnlyCompletedSeriesAndTheirBookmarks() async throws {
+        let disk = store()
+        let completed = try await download(disk)
+        let otherSeries = DemoCatalog.series[1], otherListing = try DemoCatalog.books(for: DemoCatalog.series[1].id)[0]
+        let partial = try await disk.begin(book: DemoCatalog.book(otherListing.id), series: otherSeries,
+            listing: otherListing, account: account)
+        let bookmarks = [
+            ReaderBookmark(seriesId: series.id, seriesTitle: series.title, bookId: "not-downloaded", label: "Chapter 2", pageIndex: 1, updatedAt: "today"),
+            ReaderBookmark(seriesId: otherSeries.id, seriesTitle: otherSeries.title, bookId: partial.id, label: "Chapter 1", pageIndex: 0, updatedAt: "today")]
+        XCTAssertEqual(OfflineLibrary.series([partial, completed]).map(\.id), [series.id])
+        XCTAssertEqual(OfflineLibrary.bookmarks(bookmarks, downloads: [partial, completed]), [bookmarks[0]])
+        XCTAssertEqual(OfflineLibrary.books(seriesID: series.id, downloads: [partial, completed]).map(\.id), [book.id])
+        XCTAssertTrue(OfflineLibrary.bookmarks(bookmarks, downloads: []).isEmpty)
+    }
+
+    func testRemoveSeriesDeletesPartialAndCompleteBooksButKeepsOtherSeriesAndBookmarks() async throws {
+        let disk = store()
+        let done = try await download(disk)
+        let otherSeries = DemoCatalog.series[1], otherListing = try DemoCatalog.books(for: DemoCatalog.series[1].id)[0]
+        let partial = try await disk.begin(book: DemoCatalog.book(otherListing.id), series: otherSeries,
+            listing: otherListing, account: account)
+        let bookmark = ReaderBookmark(seriesId: series.id, seriesTitle: series.title, bookId: book.id,
+            label: listing.label, pageIndex: 1, updatedAt: "today")
+        try await disk.saveBookmarks([bookmark], account: account)
+        try await disk.saveCover(Data("cover".utf8), seriesID: series.id, account: account)
+        try await disk.removeSeries(series.id, account: account)
+        let remaining = try await disk.downloads(account: account)
+        let bookmarks = try await disk.bookmarks(account: account)
+        let removedCover = try await disk.cover(seriesID: series.id, account: account)
+        XCTAssertEqual(remaining.map(\.id), [partial.id]); XCTAssertEqual(bookmarks, [bookmark]); XCTAssertNil(removedCover)
+        do {
+            _ = try await disk.savePage(Data("late".utf8), id: done.id, index: 0, generation: done.generation, account: account)
+            XCTFail("Late transfer must not recreate a removed series")
+        } catch { XCTAssertEqual(error as? OfflineError, .staleTransfer) }
+        try await disk.removeSeries(otherSeries.id, account: account)
+        let empty = try await disk.downloads(account: account)
+        XCTAssertTrue(empty.isEmpty)
+    }
 }

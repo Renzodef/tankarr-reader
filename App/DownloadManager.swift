@@ -14,6 +14,7 @@ final class DownloadManager: ObservableObject {
     private var pending: [Request] = []
     private var task: Task<Void, Never>?
     private var changingAccount = false
+    private var removing = false
     private struct Request {
         let series: LibrarySeries
         let listing: LibraryBook
@@ -29,6 +30,12 @@ final class DownloadManager: ObservableObject {
     var totalBytes: Int64 { items.reduce(0) { $0 + $1.bytes } }
     func item(_ id: String) -> OfflineDownload? { items.first { $0.id == id } }
     func isQueued(_ id: String) -> Bool { activeID == id || queuedIDs.contains(id) }
+    func hasDownloads(seriesID: String) -> Bool {
+        items.contains { $0.series.id == seriesID } || pending.contains { $0.series.id == seriesID }
+            || activeSeriesID == seriesID
+    }
+    private var activeSeriesID: String?
+    var hasDownloads: Bool { !items.isEmpty || activeID != nil || !queuedIDs.isEmpty }
 
     func activate(_ account: OfflineAccount?) async {
         changingAccount = true
@@ -46,7 +53,7 @@ final class DownloadManager: ObservableObject {
         } catch { if self.account == account { storageError = error } }
     }
     func enqueue(series: LibrarySeries, books: [LibraryBook], api: ReaderAPI?, demo: Bool) {
-        guard !changingAccount, account != nil, api != nil || demo else { return }
+        guard !changingAccount, !removing, account != nil, api != nil || demo else { return }
         for book in books where !isQueued(book.id) && item(book.id)?.complete != true {
             pending.append(Request(series: series, listing: book, api: api, demo: demo))
             queuedIDs.insert(book.id); failures[book.id] = nil
@@ -58,13 +65,30 @@ final class DownloadManager: ObservableObject {
         items.sort { $0.createdAt > $1.createdAt }
     }
     private func launchNext() {
-        guard task == nil, !pending.isEmpty, let account, !changingAccount else { return }
+        guard task == nil, !pending.isEmpty, let account, !changingAccount, !removing else { return }
         let request = pending.removeFirst()
         let id = request.listing.id
-        queuedIDs.remove(id); activeID = id
+        queuedIDs.remove(id); activeID = id; activeSeriesID = request.series.id
         task = Task {
-            defer { activeID = nil; task = nil; launchNext() }
+            defer { activeID = nil; activeSeriesID = nil; task = nil; launchNext() }
             do {
+                // A small cover travels with the download, so the offline grid
+                // also works after a cold launch. Cover failure is non-fatal.
+                if (try? await store.cover(seriesID: request.series.id, account: account)) == nil {
+                    let source: UIImage?
+                    if request.demo { source = DemoArtwork.cover(request.series) }
+                    else if let api = request.api,
+                            let data = try? await api.data("/v1/series/\(try Endpoint.identifier(request.series.id))/cover", timeout: 10) {
+                        source = UIImage(data: data)
+                    } else { source = nil }
+                    if let source {
+                        let thumb = await source.byPreparingThumbnail(ofSize: CGSize(width: 360, height: 540)) ?? source
+                        if let data = thumb.jpegData(compressionQuality: 0.8) {
+                            try? await store.saveCover(data, seriesID: request.series.id, account: account)
+                        }
+                    }
+                }
+                try Task.checkCancellation()
                 let book: ReaderBook
                 if request.demo { book = try DemoCatalog.book(id) }
                 else {
@@ -117,9 +141,31 @@ final class DownloadManager: ObservableObject {
         } catch { storageError = error }
     }
     func removeAll() async throws {
+        guard !removing, let account else { return }
+        removing = true
+        defer { removing = false; launchNext() }
         await pauseAll()
-        guard let account else { return }
         try await store.removeAll(account: account)
+        guard self.account == account else { return }
         items = []; failures = [:]; storageError = nil
+    }
+    func removeSeries(_ id: String) async throws {
+        guard !removing, let account else { return }
+        removing = true
+        defer { removing = false; launchNext() }
+        let ids = Set(items.filter { $0.series.id == id }.map(\.id))
+            .union(pending.filter { $0.series.id == id }.map { $0.listing.id })
+            .union(activeSeriesID == id ? [activeID].compactMap { $0 } : [])
+        pending.removeAll { $0.series.id == id }; queuedIDs.subtract(ids)
+        if activeSeriesID == id {
+            let running = task; running?.cancel(); await running?.value
+        }
+        do {
+            try await store.removeSeries(id, account: account)
+            guard self.account == account else { return }
+            items.removeAll { $0.series.id == id }
+            for bookID in ids { failures[bookID] = nil }
+            storageError = nil
+        } catch { await reload(); throw error }
     }
 }

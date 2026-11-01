@@ -7,16 +7,18 @@ struct LibraryView: View {
     @State private var search = ""
     @State private var showBookmarks = false
     @State private var showDownloads = false
-    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16)]
+    @State private var path: [LibrarySeries] = []
+    @State private var pendingSeries: String?
+    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16, alignment: .top)]
     private var filtered: [LibrarySeries] {
-        search.isEmpty ? model.library : model.library.filter { $0.title.localizedStandardContains(search) }
+        search.isEmpty ? model.visibleLibrary : model.visibleLibrary.filter { $0.title.localizedStandardContains(search) }
     }
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 if let error = model.error {
                     ContentUnavailableView(L10n.text("Connessione non riuscita"), systemImage: "wifi.exclamationmark", description: Text(error))
-                    Button(L10n.text("Riprova")) { Task { await model.refresh() } }.buttonStyle(.bordered)
+                    Button(L10n.text("Riprova")) { Task { await model.reconnect() } }.buttonStyle(.bordered)
                 }
                 if model.busy && model.library.isEmpty { ProgressView(L10n.text("Apro la libreria…")).padding(48) }
                 else if !model.canBrowse {
@@ -28,15 +30,21 @@ struct LibraryView: View {
                         ForEach(filtered) { series in
                             NavigationLink(value: series) {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    CoverView(series: series).aspectRatio(2.0 / 3.0, contentMode: .fit)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    Text(series.title).font(.headline).lineLimit(2).foregroundStyle(.primary)
-                                    Text(L10n.format("%d file disponibili", series.booksCount)).font(.caption).foregroundStyle(.secondary)
-                                }
+                                    CoverView(series: series)
+                                    Text(series.title).font(.headline).lineLimit(2, reservesSpace: true).foregroundStyle(.primary)
+                                    Text(L10n.format(model.offlineMode ? "%d file scaricati" : "%d file disponibili",
+                                        model.offlineMode ? downloads.items.filter { $0.complete && $0.series.id == series.id }.count : series.booksCount))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }.frame(maxWidth: .infinity, alignment: .topLeading)
                             }.buttonStyle(.plain)
                         }
                     }.padding()
-                    if filtered.isEmpty { ContentUnavailableView.search(text: search) }
+                    if filtered.isEmpty {
+                        if model.offlineMode && search.isEmpty {
+                            ContentUnavailableView(L10n.text("Nessun download"), systemImage: "arrow.down.circle",
+                                description: Text(L10n.text("Disattiva Offline per scegliere i libri da scaricare.")))
+                        } else { ContentUnavailableView.search(text: search) }
+                    }
                 }
             }
             .navigationTitle("Tankarr")
@@ -44,11 +52,24 @@ struct LibraryView: View {
             .refreshable { await model.refresh() }
             .navigationDestination(for: LibrarySeries.self) { SeriesView(series: $0) }
             .toolbar {
+                if model.canBrowse {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task { if model.offlineMode { await model.reconnect() } else { await model.useOffline() } }
+                        } label: {
+                            Image(systemName: "wifi.slash")
+                                .padding(5).background(model.offlineMode ? Color.orange.opacity(0.2) : .clear, in: Circle())
+                        }.accessibilityLabel(L10n.text("Modalità offline"))
+                            .accessibilityValue(L10n.text(model.offlineMode ? "Attiva" : "Disattiva"))
+                            .accessibilityIdentifier("offline-mode")
+                            .disabled(model.busy)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showDownloads = true } label: { Image(systemName: "arrow.down.circle") }
                         .accessibilityLabel(L10n.text("Download")).accessibilityIdentifier("downloads")
                 }
-                if model.canUseBookmarks {
+                if model.canViewBookmarks {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showBookmarks = true } label: { Image(systemName: "bookmark") }.accessibilityLabel(L10n.text("Segnalibri"))
                     }
@@ -67,20 +88,31 @@ struct LibraryView: View {
                 }.foregroundStyle(.secondary).padding(.horizontal).padding(.vertical, 8).background(.bar)
             }
         }.sheet(isPresented: $model.showConnection) { ConnectionView() }
-            .sheet(isPresented: $showBookmarks) { BookmarksView() }
-            .sheet(isPresented: $showDownloads) { DownloadsView() }
+            .sheet(isPresented: $showBookmarks, onDismiss: openPendingSeries) {
+                BookmarksView { pendingSeries = $0; showBookmarks = false }
+            }
+            .sheet(isPresented: $showDownloads, onDismiss: openPendingSeries) {
+                DownloadsView { pendingSeries = $0; showDownloads = false }
+            }
+    }
+    private func openPendingSeries() {
+        guard let id = pendingSeries else { return }; pendingSeries = nil
+        if let series = model.series(id) { path = [series] }
     }
 }
 
 struct BookmarksView: View {
+    var onShowSeries: (String) -> Void
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var downloads: DownloadManager
     @Environment(\.dismiss) private var dismiss
     @State private var selected: ReaderBookmark?
+    @State private var pendingSeries: String?
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    Text(L10n.text(model.isDemo ? "I segnalibri della demo restano su questo dispositivo." :
+                    Text(L10n.text(model.offlineMode ? "Segnalibri salvati delle serie scaricate. Per modificarli o aggiornarli, ricollegati al server." : model.isDemo ? "I segnalibri della demo restano su questo dispositivo." :
                         "Un segnalibro per serie, condiviso con Tankarr e gli altri dispositivi. Salvalo dal lettore per scegliere dove riprendere."))
                         .font(.callout).foregroundStyle(.secondary)
                 }
@@ -88,19 +120,28 @@ struct BookmarksView: View {
                     Section { Text(error).foregroundStyle(.orange); Button(L10n.text("Aggiorna segnalibri")) { Task { await model.refreshBookmarks() } } }
                 }
                 if model.bookmarksLoading { ProgressView(L10n.text("Carico i segnalibri…")) }
-                if model.bookmarks.isEmpty && !model.bookmarksLoading {
+                if model.visibleBookmarks.isEmpty && !model.bookmarksLoading {
                     ContentUnavailableView(L10n.text("Nessun segnalibro"), systemImage: "bookmark", description: Text(L10n.text("Apri un libro e usa Segnalibro per salvare una pagina.")))
                 }
-                ForEach(model.bookmarks) { bookmark in
-                    Button { selected = bookmark } label: {
+                ForEach(model.visibleBookmarks) { bookmark in
+                    let available = !model.offlineMode || downloads.item(bookmark.bookId)?.complete == true
+                    Button {
+                        if available { selected = bookmark } else { onShowSeries(bookmark.seriesId) }
+                    } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(bookmark.seriesTitle).font(.headline).foregroundStyle(.primary)
                             Text(L10n.format("%@ · Pagina %d", bookmark.label, bookmark.pageIndex + 1)).font(.subheadline).foregroundStyle(.secondary)
-                            Label(L10n.text("Riprendi lettura"), systemImage: "book.pages").font(.caption)
+                            if available { Label(L10n.text("Riprendi lettura"), systemImage: "book.pages").font(.caption) }
+                            else {
+                                Text(L10n.text("Il capitolo del segnalibro non è scaricato. Apri la serie per leggere le copie disponibili."))
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
                         }.padding(.vertical, 4)
                     }.accessibilityIdentifier("bookmark-\(bookmark.seriesId)")
                         .swipeActions {
-                            Button(L10n.text("Rimuovi"), role: .destructive) { Task { await model.removeBookmark(bookmark) } }
+                            if model.canUseBookmarks {
+                                Button(L10n.text("Rimuovi"), role: .destructive) { Task { await model.removeBookmark(bookmark) } }
+                            }
                         }.disabled(model.bookmarkBusy || model.bookmarksLoading)
                 }
                 if model.bookmarkBusy { ProgressView(L10n.text("Aggiorno i segnalibri…")) }
@@ -108,7 +149,12 @@ struct BookmarksView: View {
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("Chiudi")) { dismiss() } } }
                 .task { await model.refreshBookmarks() }
                 .refreshable { await model.refreshBookmarks() }
-                .fullScreenCover(item: $selected) { ReaderView(bookID: $0.bookId, openingPage: $0.pageIndex) }
+                .fullScreenCover(item: $selected, onDismiss: {
+                    if let id = pendingSeries { pendingSeries = nil; onShowSeries(id) }
+                }) { bookmark in
+                    ReaderView(bookID: bookmark.bookId, openingPage: bookmark.pageIndex,
+                        onShowSeries: { pendingSeries = $0; selected = nil })
+                }
         }
     }
 }
@@ -118,21 +164,38 @@ struct CoverView: View {
     @EnvironmentObject private var model: AppModel
     @State private var image: UIImage?
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12).fill(Color.secondary.opacity(0.12))
-            if let image { Image(uiImage: image).resizable().scaledToFill() }
-            else { Image(systemName: "book.closed").font(.largeTitle).foregroundStyle(.secondary) }
-        }.clipped().task(id: series.id) { image = await model.cover(series.id) }
+        Rectangle().fill(Color.secondary.opacity(0.12))
+            .aspectRatio(2.0 / 3.0, contentMode: .fit)
+            .overlay {
+                GeometryReader { geometry in
+                    if let image {
+                        Image(uiImage: image).resizable().scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                    } else {
+                        Image(systemName: "book.closed").font(.largeTitle).foregroundStyle(.secondary)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                    }
+                }
+            }.clipShape(RoundedRectangle(cornerRadius: 12))
+            .accessibilityElement(children: .ignore).accessibilityLabel(series.title)
+            .accessibilityIdentifier("cover-\(series.id)")
+            .task(id: "\(series.id)-\(model.offlineMode)") { image = await model.cover(series.id) }
     }
 }
 
 struct SeriesView: View {
     let series: LibrarySeries
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var downloads: DownloadManager
     @State private var books: [LibraryBook] = []
     @State private var loading = true
     @State private var error: String?
     @State private var selected: LibraryBook?
+    @State private var showDownloadRange = false
+    @State private var confirmRemoveSeries = false
+    private var bookmarkDownloads: [LibraryBook] {
+        DownloadSelection.fromBookmark(model.bookmarks.first { $0.seriesId == series.id }, seriesID: series.id, books: books)
+    }
     var body: some View {
         List {
             if !series.description.isEmpty {
@@ -161,16 +224,42 @@ struct SeriesView: View {
             }
         }.navigationTitle(series.title).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if model.canDownload && !books.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(L10n.text("Scarica tutti")) {
-                            model.downloads.enqueue(series: series, books: books, api: model.api, demo: model.isDemo)
-                        }.accessibilityIdentifier("download-series")
-                    }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        if model.canDownload && !books.isEmpty {
+                            Button(L10n.text("Scarica intervallo…")) { showDownloadRange = true }
+                                .accessibilityIdentifier("download-range")
+                            Button(L10n.text("Scarica dal segnalibro alla fine")) { enqueue(bookmarkDownloads) }
+                                .disabled(bookmarkDownloads.isEmpty || model.bookmarksLoading)
+                                .accessibilityIdentifier("download-from-bookmark")
+                            Button(L10n.text("Scarica tutti")) { enqueue(books) }
+                                .accessibilityIdentifier("download-series")
+                        }
+                        Button(L10n.text("Rimuovi download della serie"), role: .destructive) { confirmRemoveSeries = true }
+                            .disabled(!downloads.hasDownloads(seriesID: series.id))
+                            .accessibilityIdentifier("remove-series-downloads")
+                    } label: { Image(systemName: "arrow.down.circle") }
+                        .accessibilityLabel(L10n.text("Download della serie")).accessibilityIdentifier("series-downloads")
                 }
             }
-            .task { await load() }.refreshable { await load() }
+            .task { await load(); await model.refreshBookmarks() }
+            .refreshable { await load(); await model.refreshBookmarks() }
+            .onChange(of: downloads.items.filter { $0.complete && $0.series.id == series.id }.map(\.id)) { _, _ in
+                if model.offlineMode { books = OfflineLibrary.books(seriesID: series.id, downloads: downloads.items) }
+            }
             .fullScreenCover(item: $selected) { ReaderView(bookID: $0.id) }
+            .sheet(isPresented: $showDownloadRange) { SeriesDownloadRangeView(series: series, books: books) }
+            .confirmationDialog(L10n.text("Rimuovere tutti i download di questa serie?"), isPresented: $confirmRemoveSeries, titleVisibility: .visible) {
+                Button(L10n.text("Rimuovi download della serie"), role: .destructive) {
+                    Task {
+                        do { try await downloads.removeSeries(series.id) }
+                        catch { self.error = error.localizedDescription }
+                    }
+                }.accessibilityIdentifier("confirm-remove-series-downloads")
+            } message: { Text(L10n.text("La libreria e i segnalibri sul server restano invariati.")) }
+    }
+    private func enqueue(_ selection: [LibraryBook]) {
+        downloads.enqueue(series: series, books: selection, api: model.api, demo: model.isDemo)
     }
     private func load() async {
         guard model.canBrowse else { return }; loading = true; error = nil

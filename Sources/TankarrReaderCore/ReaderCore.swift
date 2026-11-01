@@ -119,7 +119,7 @@ public struct ReaderStatus: Decodable {
 }
 public struct BookmarksResponse: Decodable { public let items: [ReaderBookmark] }
 /// Tankarr stores one explicit reading bookmark per series, shared by its readers.
-public struct ReaderBookmark: Codable, Identifiable, Hashable {
+public struct ReaderBookmark: Codable, Identifiable, Hashable, Sendable {
     public let seriesId: String
     public let seriesTitle: String
     public let bookId: String

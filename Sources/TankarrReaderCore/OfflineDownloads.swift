@@ -122,11 +122,47 @@ public actor OfflineStore {
     public func downloads(account: OfflineAccount) throws -> [OfflineDownload] {
         let folder = try accountURL(account)
         return try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent != ".metadata" }
             .compactMap { try read($0.lastPathComponent, account: account) }
             .sorted { $0.createdAt > $1.createdAt }
     }
     public func record(_ id: String, account: OfflineAccount) throws -> OfflineDownload? {
         try read(id, account: account)
+    }
+    private func metadataURL(_ name: String, account: OfflineAccount) throws -> URL {
+        let folder = try accountURL(account).appendingPathComponent(".metadata", isDirectory: true)
+        try directory(folder)
+        return folder.appendingPathComponent(name)
+    }
+    public func saveBookmarks(_ bookmarks: [ReaderBookmark], account: OfflineAccount) throws {
+        let data = try JSONEncoder().encode(bookmarks)
+        guard data.count <= 8 * 1024 * 1024 else { throw OfflineError.invalidStorage }
+        try checkSpace(for: data.count)
+        try write(data, to: metadataURL("bookmarks.json", account: account))
+    }
+    public func bookmarks(account: OfflineAccount) throws -> [ReaderBookmark] {
+        let file = try metadataURL("bookmarks.json", account: account)
+        guard fm.fileExists(atPath: file.path) else { return [] }
+        guard try regularSize(file) <= 8 * 1024 * 1024 else { throw OfflineError.invalidStorage }
+        return try JSONDecoder().decode([ReaderBookmark].self, from: Data(contentsOf: file))
+    }
+    public func saveCover(_ data: Data, seriesID: String, account: OfflineAccount) throws {
+        guard !data.isEmpty, data.count <= 2 * 1024 * 1024 else { throw OfflineError.invalidPage }
+        try checkSpace(for: data.count)
+        try write(data, to: metadataURL("cover-\(try Endpoint.identifier(seriesID)).jpg", account: account))
+    }
+    public func cover(seriesID: String, account: OfflineAccount) throws -> Data? {
+        let file = try metadataURL("cover-\(try Endpoint.identifier(seriesID)).jpg", account: account)
+        guard fm.fileExists(atPath: file.path) else { return nil }
+        guard try regularSize(file) <= 2 * 1024 * 1024 else { throw OfflineError.invalidStorage }
+        return try Data(contentsOf: file)
+    }
+    public func removeSeries(_ id: String, account: OfflineAccount) throws {
+        for record in try downloads(account: account) where record.series.id == id {
+            try remove(record.id, account: account)
+        }
+        let cover = try metadataURL("cover-\(try Endpoint.identifier(id)).jpg", account: account)
+        if fm.fileExists(atPath: cover.path) { try fm.removeItem(at: cover) }
     }
     public func checkSpace(for bytes: Int = OfflineStore.maxPageBytes) throws {
         try directory(root)
