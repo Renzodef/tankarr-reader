@@ -128,8 +128,13 @@ final class ReaderUITests: XCTestCase {
             let lastX = 1 - firstX
             let first = slider.coordinate(withNormalizedOffset: CGVector(dx: firstX, dy: 0.5))
             let last = slider.coordinate(withNormalizedOffset: CGVector(dx: lastX, dy: 0.5))
+            let windowWidth = app.windows.firstMatch.frame.width
+            let screenshot = XCTAttachment(screenshot: app.screenshot())
+            screenshot.lifetime = .keepAlways; add(screenshot)
             first.press(forDuration: 0.1, thenDragTo: last)
-            XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertEqual(app.windows.firstMatch.frame.width, windowWidth, accuracy: 1,
+                "Dragging the page slider must not resize the iPad window")
             waitForLoadedPage()
             last.press(forDuration: 0.1, thenDragTo: first)
             XCTAssertTrue(app.staticTexts["1 / 3"].waitForExistence(timeout: 5))

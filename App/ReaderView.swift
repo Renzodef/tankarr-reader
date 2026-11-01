@@ -33,7 +33,6 @@ private struct ReaderChapterView: View {
     @State private var loading = true
     @State private var loadedPage: Int?
     @State private var retry = 0
-    @State private var controls = true
     @State private var options = ReadingOptions()
     @State private var showOptions = false
     @State private var continuousRequestPage = 0
@@ -46,43 +45,40 @@ private struct ReaderChapterView: View {
     private var continuous: Bool { book.map { options.resolvedContinuous(for: $0) } ?? false }
 
     var body: some View {
-        VStack(spacing: 0) {
-            if controls {
-                HStack {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(L10n.text("Chiudi libro"))
-                    if let seriesID = book?.seriesId {
-                        Button {
-                            if let onShowSeries { onShowSeries(seriesID) }
-                            else { dismiss() }
-                        } label: { Image(systemName: "books.vertical") }
-                            .accessibilityLabel(L10n.text("Torna alla serie"))
-                            .accessibilityIdentifier("reader-show-series")
-                    }
-                    Spacer()
-                    VStack { Text(book?.seriesTitle ?? "Tankarr").font(.caption).lineLimit(1); Text(book?.title ?? L10n.text("Caricamento…")).font(.caption2).lineLimit(1).accessibilityIdentifier("reader-book-title") }
-                    Spacer()
-                    if let book, model.canUseBookmarks, book.seriesId != nil {
-                        Menu {
-                            Button(L10n.text(model.bookmark(for: book) == nil ? "Salva segnalibro" : "Sposta segnalibro a questa pagina")) {
-                                guard let displayed = loadedPage else { return }
-                                Task { await model.saveBookmark(book, page: displayed) }
-                            }
-                            if let bookmark = model.bookmark(for: book) {
-                                Button(L10n.text("Rimuovi segnalibro"), role: .destructive) { Task { await model.removeBookmark(bookmark) } }
-                            }
-                        } label: {
-                            Image(systemName: model.bookmark(for: book) == nil ? "bookmark" : "bookmark.fill")
-                        }.accessibilityLabel(L10n.text("Segnalibro"))
-                            .accessibilityIdentifier("reader-bookmark-menu")
-                            .accessibilityHint(L10n.text("Salva o sposta il segnalibro alla pagina aperta."))
-                            .disabled(loadedPage == nil || loading || model.bookmarkBusy || model.bookmarksLoading)
-                    }
-                    Image(systemName: axis == .vertical ? "arrow.down" : (rtl ? "arrow.left" : "arrow.right")).font(.caption)
-                        .accessibilityLabel(L10n.text(axis == .vertical ? "Lettura dall’alto in basso" : (rtl ? "Lettura da destra a sinistra" : "Lettura da sinistra a destra")))
-                    Button { showOptions = true } label: { Image(systemName: "slider.horizontal.3") }
-                        .accessibilityLabel(L10n.text("Opzioni di lettura")).disabled(book == nil)
-                }.padding().background(.ultraThinMaterial)
+        // Native navigation reserves space for iPad window controls.
+        NavigationStack {
+            readerContent
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { readerToolbar }
+                .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
+        }.preferredColorScheme(.dark)
+            .task(id: "metadata-\(retry)") { if book == nil { await loadBook() } }
+            .task(id: "\(book?.id ?? "")-\(page)-\(retry)-\(continuous)") { if book != nil && !continuous { await loadPage() } }
+            .onChange(of: options) { _, value in
+                if let book { model.saveReadingOptions(value, book: book) }
             }
+            .onChange(of: continuous) { _, _ in
+                image = nil; loadedPage = nil; error = nil; loading = true
+                continuousRequestPage = page; continuousRequestID += 1
+            }
+            .sheet(isPresented: $showOptions) { readingOptionsSheet }
+            .onDisappear { chapterTask?.cancel() }
+            .alert(L10n.text("Navigazione capitoli"), isPresented: Binding(
+                get: { boundaryMessage != nil }, set: { if !$0 { boundaryMessage = nil } })) {
+                    Button(L10n.text("OK")) { boundaryMessage = nil }
+                } message: { Text(boundaryMessage ?? "") }
+    }
+    private var readerContent: some View {
+        VStack(spacing: 0) {
+            // A principal toolbar title can disappear in narrow iPad windows
+            // when the system window controls and reader actions need the row.
+            VStack(spacing: 2) {
+                Text(book?.seriesTitle ?? "Tankarr").font(.caption).lineLimit(1)
+                Text(book?.title ?? L10n.text("Caricamento…")).font(.caption2).lineLimit(2)
+                    .accessibilityIdentifier("reader-book-title")
+            }.frame(maxWidth: .infinity).padding(.horizontal).padding(.vertical, 6)
+                .background(.ultraThinMaterial)
             ZStack {
                 Color.black
                 if continuous, let book {
@@ -123,16 +119,7 @@ private struct ReaderChapterView: View {
                             .font(.caption).foregroundStyle(.secondary)
                             .accessibilityIdentifier("bookmark-sync-pending")
                     }
-                    HStack {
-                        Button { step(rtl ? 1 : -1) } label: { Image(systemName: axis == .vertical ? "chevron.up" : "chevron.left").frame(width: 44, height: 36) }
-                            .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina successiva" : "Pagina precedente"))
-                        Spacer()
-                        Text("\(page + 1) / \(book.pageCount)").monospacedDigit().font(.callout)
-                            .accessibilityIdentifier("reader-page-counter")
-                        Spacer()
-                        Button { step(rtl ? -1 : 1) } label: { Image(systemName: axis == .vertical ? "chevron.down" : "chevron.right").frame(width: 44, height: 36) }
-                            .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina precedente" : "Pagina successiva"))
-                    }
+                    // Keep the thumb clear of the iPad window resize corner.
                     if book.pageCount > 1 {
                         Slider(value: Binding(get: { Double(page) }, set: { navigate(to: Int($0)) }), in: 0...Double(book.pageCount - 1), step: 1)
                             .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
@@ -140,24 +127,54 @@ private struct ReaderChapterView: View {
                             .accessibilityIdentifier("reader-page-slider")
                             .accessibilityLabel(L10n.text("Pagina")).accessibilityValue(L10n.format("%d di %d", page + 1, book.pageCount))
                     }
-                }.padding(.horizontal, 16).padding(.vertical, 8).background(.ultraThinMaterial)
+                    HStack {
+                        Button { step(rtl ? 1 : -1) } label: { Image(systemName: axis == .vertical ? "chevron.up" : "chevron.left").frame(width: 44, height: 44) }
+                            .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina successiva" : "Pagina precedente"))
+                        Spacer()
+                        Image(systemName: axis == .vertical ? "arrow.down" : (rtl ? "arrow.left" : "arrow.right")).font(.caption)
+                            .accessibilityLabel(L10n.text(axis == .vertical ? "Lettura dall’alto in basso" : (rtl ? "Lettura da destra a sinistra" : "Lettura da sinistra a destra")))
+                        Text("\(page + 1) / \(book.pageCount)").monospacedDigit().font(.callout)
+                            .accessibilityIdentifier("reader-page-counter")
+                        Spacer()
+                        Button { step(rtl ? -1 : 1) } label: { Image(systemName: axis == .vertical ? "chevron.down" : "chevron.right").frame(width: 44, height: 44) }
+                            .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina precedente" : "Pagina successiva"))
+                    }
+                }.padding(.horizontal, 24).padding(.vertical, 8).background(.ultraThinMaterial)
             }
-        }.background(.black).preferredColorScheme(.dark)
-            .task(id: "metadata-\(retry)") { if book == nil { await loadBook() } }
-            .task(id: "\(book?.id ?? "")-\(page)-\(retry)-\(continuous)") { if book != nil && !continuous { await loadPage() } }
-            .onChange(of: options) { _, value in
-                if let book { model.saveReadingOptions(value, book: book) }
+        }.background(.black)
+    }
+    @ToolbarContentBuilder private var readerToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarLeading) {
+            Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(L10n.text("Chiudi libro"))
+            if let seriesID = book?.seriesId {
+                Button {
+                    if let onShowSeries { onShowSeries(seriesID) }
+                    else { dismiss() }
+                } label: { Image(systemName: "books.vertical") }
+                    .accessibilityLabel(L10n.text("Torna alla serie"))
+                    .accessibilityIdentifier("reader-show-series")
             }
-            .onChange(of: continuous) { _, _ in
-                image = nil; loadedPage = nil; error = nil; loading = true
-                continuousRequestPage = page; continuousRequestID += 1
+        }
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if let book, model.canUseBookmarks, book.seriesId != nil {
+                Menu {
+                    Button(L10n.text(model.bookmark(for: book) == nil ? "Salva segnalibro" : "Sposta segnalibro a questa pagina")) {
+                        guard let displayed = loadedPage else { return }
+                        Task { await model.saveBookmark(book, page: displayed) }
+                    }
+                    if let bookmark = model.bookmark(for: book) {
+                        Button(L10n.text("Rimuovi segnalibro"), role: .destructive) { Task { await model.removeBookmark(bookmark) } }
+                    }
+                } label: {
+                    Image(systemName: model.bookmark(for: book) == nil ? "bookmark" : "bookmark.fill")
+                }.accessibilityLabel(L10n.text("Segnalibro"))
+                    .accessibilityIdentifier("reader-bookmark-menu")
+                    .accessibilityHint(L10n.text("Salva o sposta il segnalibro alla pagina aperta."))
+                    .disabled(loadedPage == nil || loading || model.bookmarkBusy || model.bookmarksLoading)
             }
-            .sheet(isPresented: $showOptions) { readingOptionsSheet }
-            .onDisappear { chapterTask?.cancel() }
-            .alert(L10n.text("Navigazione capitoli"), isPresented: Binding(
-                get: { boundaryMessage != nil }, set: { if !$0 { boundaryMessage = nil } })) {
-                    Button(L10n.text("OK")) { boundaryMessage = nil }
-                } message: { Text(boundaryMessage ?? "") }
+            Button { showOptions = true } label: { Image(systemName: "slider.horizontal.3") }
+                .accessibilityLabel(L10n.text("Opzioni di lettura")).disabled(book == nil)
+        }
     }
     private var readingOptionsSheet: some View {
         NavigationStack {
