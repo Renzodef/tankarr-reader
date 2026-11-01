@@ -40,6 +40,24 @@ def test_requires_both_available_families():
                                          [device("iPhone 17"), device("iPad Pro", False)]}})
 
 
+def test_simulator_verification_uses_adhoc_signing_for_keychain_without_apple_credentials(monkeypatch, tmp_path):
+    calls = []
+    payload = {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-27-0": [device("iPhone"), device("iPad")]}}
+
+    def fake_run(*args, **kwargs):
+        calls.append(args)
+        if args[:4] == ("xcrun", "simctl", "list", "devices"):
+            return json.dumps(payload)
+
+    monkeypatch.setattr(ci, "ROOT", tmp_path)
+    monkeypatch.setattr(ci, "run", fake_run)
+    ci.verify()
+    tests = [call for call in calls if call[0] == "xcodebuild" and call[-1] == "test"]
+    assert len(tests) == 2
+    assert all("CODE_SIGN_IDENTITY=-" in call and "CODE_SIGNING_ALLOWED=NO" not in call for call in tests)
+    assert not any("DEVELOPMENT_TEAM" in str(call) or "allowProvisioningUpdates" in str(call) for call in calls)
+
+
 def test_prefers_idle_simulators_instead_of_an_already_running_device():
     active = {**device("iPhone 16"), "state": "Booted"}
     payload = {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-27-0":

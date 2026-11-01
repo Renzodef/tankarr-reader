@@ -97,12 +97,17 @@ un download, oppure rimuoverli tutti con il cestino sempre visibile in alto,
 dopo conferma. Una copia è pronta solo dopo il salvataggio
 di tutte le pagine; i trasferimenti interrotti conservano quelle già ricevute e
 **Riprendi** scarica soltanto le mancanti o danneggiate. Se la rete o il disco
-falliscono, la coda si ferma senza ritentare indefinitamente. Dopo la chiusura
-dell'app si riprendono manualmente i download incompleti; la coda non ancora
-iniziata può essere selezionata di nuovo con **Scarica tutti**.
+falliscono, la coda resta salvata, senza ritentare indefinitamente: **Riprendi la
+coda**, il ritorno nell'app o la riconnessione riprovano le pagine mancanti.
 
-Tenere l'app aperta durante il trasferimento: non viene promesso il completamento
-in background o a schermo bloccato. Il controllo dello spazio lascia almeno
+I trasferimenti reali usano una `URLSession` background: continuano quando si
+cambia app o si blocca lo schermo. L'intera selezione viene salvata prima di
+creare le richieste, compresi i libri non ancora iniziati. La chiusura forzata
+annulla i trasferimenti iOS, ma alla riapertura la coda riprende automaticamente.
+La modalità Offline conserva la coda e la sospende fino alla riconnessione.
+Tempi, disponibilità di rete e sospensioni per risparmio energetico restano sotto
+il controllo di iOS. La demo genera immagini sul dispositivo e non usa rete.
+Il controllo dello spazio lascia almeno
 256 MiB liberi e riserva spazio per la pagina temporanea. Le pagine sono limitate
 a 64 MiB ciascuna, validate come immagini e salvate con checksum; non viene
 caricato in memoria un intero volume.
@@ -146,9 +151,13 @@ controllo dello spazio disco (`E174.1`) per queste operazioni visibili all'utent
 In Connessione inserire URL locale e/o HTTPS, utente e password del lettore.
 Automatico prova prima il locale, poi il remoto. Un aggiornamento della
 libreria rivaluta gli indirizzi. I certificati TLS vengono sempre verificati;
-HTTP è ammesso soltanto per host locali espliciti. I redirect sono rifiutati.
-La password è salvata nel Portachiavi, accessibile solo a dispositivo sbloccato,
-senza sincronizzazione iCloud. Gli altri dati di connessione sono in UserDefaults.
+HTTP è ammesso soltanto per host locali espliciti. Le richieste interattive
+rifiutano redirect; le sessioni background li seguono secondo le regole di iOS,
+ma il client rifiuta contenuti ricevuti da un URL diverso da quello richiesto.
+La password resta nel Portachiavi, senza sincronizzazione iCloud, accessibile
+dopo il primo sblocco del dispositivo (`AfterFirstUnlockThisDeviceOnly`). Anche
+l'archivio offline usa la protezione fino al primo sblocco per poter ricevere
+pagine a schermo bloccato. Gli altri dati di connessione sono in UserDefaults.
 
 È possibile importare un JSON privato da File, quindi premere Connetti:
 

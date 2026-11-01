@@ -89,7 +89,9 @@ def verify():
             run("xcodebuild", "-project", "TankarrReader.xcodeproj", "-scheme", SCHEME,
                 "-configuration", "Debug", "-destination", f"platform=iOS Simulator,id={device['udid']}",
                 "-derivedDataPath", "build/DerivedData", "-resultBundlePath", result,
-                "-parallel-testing-enabled", "NO", "CODE_SIGNING_ALLOWED=NO", "test")
+                # Ad-hoc simulator signing enables the real Keychain used by the
+                # background download/relaunch tests; no Apple credentials needed.
+                "-parallel-testing-enabled", "NO", "CODE_SIGN_IDENTITY=-", "test")
 
 
 def release_request(env):

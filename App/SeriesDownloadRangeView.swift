@@ -38,7 +38,7 @@ struct SeriesDownloadRangeView: View {
                         dismiss()
                     }.disabled(selection.isEmpty || !model.canDownload)
                         .accessibilityIdentifier("confirm-download-range")
-                    Text(L10n.text("Tieni l’app aperta durante i download."))
+                    Text(L10n.text("Puoi cambiare app: i download continuano in background e la coda resta salvata."))
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }.navigationTitle(L10n.text("Scarica intervallo"))
