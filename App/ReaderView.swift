@@ -4,6 +4,7 @@ import UIKit
 struct ReaderView: View {
     let bookID: String
     var openingPage: Int? = nil
+    var onShowSeries: ((String) -> Void)? = nil
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var book: ReaderBook?
@@ -27,6 +28,14 @@ struct ReaderView: View {
             if controls {
                 HStack {
                     Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(L10n.text("Chiudi libro"))
+                    if let seriesID = book?.seriesId {
+                        Button {
+                            if let onShowSeries { onShowSeries(seriesID) }
+                            else { dismiss() }
+                        } label: { Image(systemName: "books.vertical") }
+                            .accessibilityLabel(L10n.text("Torna alla serie"))
+                            .accessibilityIdentifier("reader-show-series")
+                    }
                     Spacer()
                     VStack { Text(book?.seriesTitle ?? "Tankarr").font(.caption).lineLimit(1); Text(book?.title ?? L10n.text("Caricamento…")).font(.caption2).lineLimit(1) }
                     Spacer()

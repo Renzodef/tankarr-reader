@@ -83,9 +83,18 @@ download locale. **Scarica tutti** mette in coda i libri della serie, uno alla
 volta. Non avvia ricerche né acquisizioni sul server: copia soltanto pagine già
 accessibili all'account lettore, usando gli stessi endpoint autenticati.
 
+Il menu **Download della serie** in alto offre **Scarica intervallo…**, con due
+menu **Da/A** inclusivi nell'ordine del catalogo, **Scarica dal segnalibro alla
+fine** (include il capitolo segnato) e **Rimuovi download della serie**. Un
+segnalibro assente o non più presente nel catalogo disabilita quel download;
+non viene sostituito con un download di tutta la serie. I libri completi o già
+in coda vengono saltati. La rimozione confermata annulla anche i trasferimenti
+pendenti della sola serie, mantenendo quelli delle altre.
+
 Il pulsante **Download** nella libreria mostra avanzamento, spazio occupato e
 copie **Disponibili offline**. Si può mettere in pausa, riprendere o rimuovere
-un download, oppure rimuoverli tutti. Una copia è pronta solo dopo il salvataggio
+un download, oppure rimuoverli tutti con il cestino sempre visibile in alto,
+dopo conferma. Una copia è pronta solo dopo il salvataggio
 di tutte le pagine; i trasferimenti interrotti conservano quelle già ricevute e
 **Riprendi** scarica soltanto le mancanti o danneggiate. Se la rete o il disco
 falliscono, la coda si ferma senza ritentare indefinitamente. Dopo la chiusura
@@ -98,12 +107,23 @@ in background o a schermo bloccato. Il controllo dello spazio lascia almeno
 a 64 MiB ciascuna, validate come immagini e salvate con checksum; non viene
 caricato in memoria un intero volume.
 
-**Usa senza connessione** apre solo le copie complete; **Ricollega al server**
-torna alla libreria online. Le copie si leggono anche dopo aver chiuso e riaperto
+Il tasto **Modalità offline** in alto mette in pausa i trasferimenti e mostra soltanto le serie
+con almeno un libro completo e i segnalibri di quelle serie. Conserva le
+copertine dei download e una fotografia dei segnalibri, separata per account e
+server, anche dopo il riavvio. Se il capitolo segnato non è scaricato, la riga
+lo spiega e apre la serie invece di tentare una lettura in rete. Il filtro si
+aggiorna subito quando si cancellano le copie locali.
+
+**Usa senza connessione** nella schermata Download attiva la stessa modalità;
+toccare nuovamente il tasto in alto o **Ricollega al server** torna alla libreria
+online. Il gesto di aggiornamento in modalità offline aggiorna solo i dati
+locali. Le copie si leggono anche dopo aver chiuso e riaperto
 l'app, in modalità a pagine o continua e con tutte le direzioni disponibili.
-La pagina raggiunta continua a essere salvata localmente. I segnalibri condivisi
-richiedono la connessione e un salvataggio esplicito: non vengono accodate
+La pagina raggiunta continua a essere salvata localmente. Modificare i segnalibri
+condivisi richiede la connessione e un salvataggio esplicito: non vengono accodate
 scritture offline che potrebbero sovrascrivere quelle di altri dispositivi.
+**Torna alla serie** nel lettore apre la scheda della serie anche arrivando da
+Download o Segnalibri; **Chiudi libro** torna invece alla schermata precedente.
 
 I download sono separati per identità del server e nome utente: LAN e HTTPS dello
 stesso server condividono le copie, altri account no. I dati stanno in

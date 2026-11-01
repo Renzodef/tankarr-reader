@@ -33,6 +33,7 @@ struct DownloadBookControl: View {
 }
 
 struct DownloadsView: View {
+    var onShowSeries: (String) -> Void
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var downloads: DownloadManager
     @Environment(\.dismiss) private var dismiss
@@ -40,6 +41,7 @@ struct DownloadsView: View {
     @State private var confirmRemoveAll = false
     @State private var removeID: String?
     @State private var error: String?
+    @State private var pendingSeries: String?
     var body: some View {
         NavigationStack {
             List {
@@ -51,7 +53,7 @@ struct DownloadsView: View {
                     if !downloads.queuedIDs.isEmpty { Text(L10n.format("%d download in coda", downloads.queuedIDs.count)) }
                     if model.offlineMode {
                         Label(L10n.text("Lettura offline"), systemImage: "wifi.slash")
-                        Button(L10n.text("Ricollega al server")) { Task { await model.refresh() } }.disabled(model.busy)
+                        Button(L10n.text("Ricollega al server")) { Task { await model.reconnect() } }.disabled(model.busy)
                     } else if downloads.items.contains(where: { $0.complete }) {
                         Button(L10n.text("Usa senza connessione")) { Task { await model.useOffline() } }
                             .accessibilityIdentifier("use-offline")
@@ -96,16 +98,23 @@ struct DownloadsView: View {
                         }
                     }
                 }
-                if !downloads.items.isEmpty {
-                    Section {
-                        Button(L10n.text("Rimuovi tutti i download"), role: .destructive) { confirmRemoveAll = true }
-                            .accessibilityIdentifier("remove-all-downloads")
+            }.navigationTitle(L10n.text("Download"))
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button(L10n.text("Chiudi")) { dismiss() } }
+                    if downloads.hasDownloads {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button(role: .destructive) { confirmRemoveAll = true } label: { Image(systemName: "trash") }
+                                .accessibilityLabel(L10n.text("Rimuovi tutti i download"))
+                                .accessibilityIdentifier("remove-all-downloads")
+                        }
                     }
                 }
-            }.navigationTitle(L10n.text("Download"))
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button(L10n.text("Chiudi")) { dismiss() } } }
                 .task { await downloads.reload() }
-                .fullScreenCover(item: $selected) { ReaderView(bookID: $0.id) }
+                .fullScreenCover(item: $selected, onDismiss: {
+                    if let id = pendingSeries { pendingSeries = nil; onShowSeries(id) }
+                }) { book in
+                    ReaderView(bookID: book.id, onShowSeries: { pendingSeries = $0; selected = nil })
+                }
                 .confirmationDialog(L10n.text("Rimuovere tutti i download di questo account?"), isPresented: $confirmRemoveAll, titleVisibility: .visible) {
                     Button(L10n.text("Rimuovi tutti i download"), role: .destructive) {
                         Task { do { try await downloads.removeAll() } catch { self.error = error.localizedDescription } }

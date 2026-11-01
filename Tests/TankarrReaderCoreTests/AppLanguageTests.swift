@@ -74,7 +74,7 @@ final class AppLanguageTests: XCTestCase {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let names = ["App/LibraryView.swift", "App/PrivacyView.swift", "App/TankarrReaderApp.swift",
                      "App/ReaderView.swift", "App/ContinuousReaderView.swift",
-                     "App/DownloadsView.swift", "App/DownloadManager.swift", "Sources/TankarrReaderCore/OfflineDownloads.swift",
+                     "App/DownloadsView.swift", "App/DownloadManager.swift", "App/SeriesDownloadRangeView.swift", "Sources/TankarrReaderCore/OfflineDownloads.swift",
                      "Sources/TankarrReaderCore/ReaderCore.swift", "Sources/TankarrReaderCore/ReadingPreferences.swift"]
         let expression = try NSRegularExpression(pattern: #"L10n\.(?:text|format)\("([^"\n]*)""#)
         for name in names {

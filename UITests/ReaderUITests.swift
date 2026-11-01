@@ -171,6 +171,84 @@ final class ReaderUITests: XCTestCase {
         XCTAssertFalse(app.buttons["offline-book-\(id)"].exists)
     }
 
+    func testOfflineFilterBookmarksRangesAndSeriesNavigation() {
+        let id = "demo-lighthouse-volume-1"
+        app.buttons["downloads"].tap()
+        if app.buttons["remove-all-downloads"].exists {
+            app.buttons["remove-all-downloads"].tap()
+            app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
+            XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+        }
+        app.buttons["Chiudi"].tap()
+        // Keep an online bookmark in an undownloaded series: offline must hide it.
+        for title in ["Il giardino sospeso", "Segnali dal faro"] {
+            app.staticTexts[title].firstMatch.tap()
+            openBook()
+            app.buttons["Segnalibro"].tap()
+            let save = app.buttons["Salva segnalibro"]
+            if save.exists { save.tap() } else { app.buttons["Sposta segnalibro a questa pagina"].tap() }
+            app.buttons["reader-show-series"].tap()
+            XCTAssertTrue(app.buttons["series-downloads"].waitForExistence(timeout: 10))
+            app.navigationBars.buttons.firstMatch.tap()
+        }
+        app.staticTexts["Segnali dal faro"].firstMatch.tap()
+        app.buttons["series-downloads"].tap()
+        app.buttons["download-range"].tap()
+        XCTAssertTrue(app.buttons["download-range-from"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["download-range-through"].exists)
+        app.buttons["confirm-download-range"].tap()
+        XCTAssertTrue(app.buttons["remove-download-\(id)"].waitForExistence(timeout: 30))
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["offline-mode"].tap()
+        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["Il giardino sospeso"].exists)
+        XCTAssertFalse(app.staticTexts["Atlante delle nuvole"].exists)
+        app.buttons["Segnalibri"].tap()
+        XCTAssertTrue(app.buttons["bookmark-demo-lighthouse"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["bookmark-demo-garden"].exists)
+        capture("offline-library-bookmarks")
+        app.buttons["bookmark-demo-lighthouse"].tap()
+        XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["reader-show-series"].tap()
+        XCTAssertTrue(app.buttons["series-downloads"].waitForExistence(timeout: 10), "Return crosses bookmark sheet to series")
+        app.buttons["series-downloads"].tap()
+        app.buttons["remove-series-downloads"].tap()
+        app.buttons["confirm-remove-series-downloads"].firstMatch.tap()
+        XCTAssertFalse(app.buttons["remove-download-\(id)"].waitForExistence(timeout: 3))
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+        app.buttons["offline-mode"].tap()
+        XCTAssertTrue(app.staticTexts["Il giardino sospeso"].firstMatch.waitForExistence(timeout: 10))
+        app.staticTexts["Segnali dal faro"].firstMatch.tap()
+        app.buttons["series-downloads"].tap()
+        app.buttons["download-from-bookmark"].tap()
+        XCTAssertTrue(app.buttons["remove-download-\(id)"].waitForExistence(timeout: 30))
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["downloads"].tap()
+        app.buttons["offline-book-\(id)"].tap()
+        XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["reader-show-series"].tap()
+        XCTAssertTrue(app.buttons["series-downloads"].waitForExistence(timeout: 10), "Return crosses download sheet to series")
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["downloads"].tap()
+        XCTAssertTrue(app.buttons["remove-all-downloads"].isHittable, "Delete all stays in the top toolbar")
+        app.buttons["remove-all-downloads"].tap()
+        app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+    }
+
+    func testLibraryCoverFramesStayAlignedAcrossDifferentTitleLengths() {
+        let first = app.descendants(matching: .any).matching(identifier: "cover-demo-lighthouse").firstMatch
+        let second = app.descendants(matching: .any).matching(identifier: "cover-demo-garden").firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 10)); XCTAssertTrue(second.exists)
+        XCTAssertEqual(first.frame.minY, second.frame.minY, accuracy: 1, "Titles must not vertically center different cells")
+        XCTAssertEqual(first.frame.height, second.frame.height, accuracy: 1)
+        // SwiftUI exposes the enclosing navigation link's accessibility frame,
+        // including its title. Matching row tops/heights catches the regression.
+        capture("aligned-library-covers")
+    }
+
     func testDemoBookmarkLifecycleAndIndependentLocalResume() {
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
         openBook()

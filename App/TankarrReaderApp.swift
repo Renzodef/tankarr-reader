@@ -66,6 +66,11 @@ final class AppModel: ObservableObject {
     let downloads = DownloadManager()
     var canBrowse: Bool { api != nil || isDemo || offlineMode }
     var canUseBookmarks: Bool { !offlineMode && (isDemo || readingStateWritable) }
+    var canViewBookmarks: Bool { offlineMode || canUseBookmarks }
+    var visibleLibrary: [LibrarySeries] { offlineMode ? downloadedSeries : library }
+    var visibleBookmarks: [ReaderBookmark] {
+        offlineMode ? OfflineLibrary.bookmarks(bookmarks, downloads: downloads.items) : bookmarks
+    }
     var canDownload: Bool { !offlineMode && (api != nil || isDemo) }
     var error: String? { connectionError.map { $0.localizedDescription } }
     var bookmarkError: String? { bookmarkFailure.map { L10n.format($0.format, $0.error.localizedDescription) } }
@@ -103,15 +108,19 @@ final class AppModel: ObservableObject {
     func restore() async {
         guard !restored else { return }; restored = true
         if UserDefaults.standard.bool(forKey: "demoMode") || ProcessInfo.processInfo.arguments.contains("--demo") {
+            let resumeOffline = UserDefaults.standard.bool(forKey: "offlineReading")
+                && !ProcessInfo.processInfo.arguments.contains("--demo")
             await startDemo()
+            if resumeOffline { await useOffline() }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--offline-demo") { await useOffline() }
             #endif
             return
         }
         await downloads.activate(offlineAccount(profile))
+        await restoreCachedBookmarks()
         if !downloads.items.isEmpty { offlineMode = true; library = downloadedSeries }
-        if UserDefaults.standard.bool(forKey: "offlineReading"), !downloads.items.isEmpty {
+        if UserDefaults.standard.bool(forKey: "offlineReading"), downloads.account != nil {
             await useOffline(); return
         }
         if let password = PasswordStore.read() { await connect(profile, password: password) }
@@ -130,6 +139,7 @@ final class AppModel: ObservableObject {
             await downloads.activate(offlineAccount(accepted))
             profile = accepted; api = client; isDemo = false; offlineMode = false; library = result.items; covers.removeAllObjects()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
+            await restoreCachedBookmarks()
             UserDefaults.standard.removeObject(forKey: "demoMode")
             UserDefaults.standard.removeObject(forKey: "offlineReading")
             endpointHost = client.base.host
@@ -143,6 +153,11 @@ final class AppModel: ObservableObject {
         }
     }
     func refresh() async {
+        // Pull-to-refresh while offline must not silently reconnect.
+        if offlineMode { await downloads.reload(); await restoreCachedBookmarks(); return }
+        await reconnect()
+    }
+    func reconnect() async {
         if isDemo { await startDemo(); return }
         guard let password = PasswordStore.read() else { showConnection = true; return }
         await connect(profile, password: password) // Re-evaluate LAN/HTTPS availability on refresh.
@@ -168,18 +183,24 @@ final class AppModel: ObservableObject {
         return OfflineAccount(instance: instance, username: profile.username)
     }
     private var downloadedSeries: [LibrarySeries] {
-        var seen = Set<String>()
-        return downloads.items.filter { $0.complete && seen.insert($0.series.id).inserted }.map(\.series)
+        OfflineLibrary.series(downloads.items)
     }
     func useOffline() async {
+        if !offlineMode { await cacheBookmarks() }
         await downloads.pauseAll()
         api = nil; offlineMode = true; library = downloadedSeries; covers.removeAllObjects()
-        resetBookmarkSession(); readingStateWritable = false; connectionError = nil; showConnection = false
+        sessionID = UUID(); bookmarksLoading = false
+        readingStateWritable = false; connectionError = nil; showConnection = false
+        await restoreCachedBookmarks()
         UserDefaults.standard.set(true, forKey: "offlineReading")
     }
     func cover(_ id: String) async -> UIImage? {
         if let cached = covers.object(forKey: id as NSString) { return cached }
-        if offlineMode { return nil }
+        if offlineMode {
+            guard let account = downloads.account,
+                  let data = try? await downloads.store.cover(seriesID: id, account: account) else { return nil }
+            return UIImage(data: data)
+        }
         if isDemo, let series = DemoCatalog.series.first(where: { $0.id == id }) {
             let image = DemoArtwork.cover(series)
             covers.setObject(image, forKey: id as NSString, cost: 600 * 900 * 4)
@@ -211,13 +232,14 @@ final class AppModel: ObservableObject {
     private var progressInstance: String { isDemo ? DemoCatalog.instanceID : profile.instanceID ?? "local" }
     func clearProgress() {
         progress.clear(); readingPreferences.clear(); demoBookmarks.clear()
-        if isDemo { bookmarks = [] }
+        if isDemo { bookmarks = []; Task { await cacheBookmarks() } }
     }
     func startDemo() async {
         guard !busy else { return }
         await downloads.activate(OfflineAccount(instance: DemoCatalog.instanceID, username: "demo"))
         api = nil; isDemo = true; offlineMode = false; library = DemoCatalog.series; covers.removeAllObjects()
         resetBookmarkSession(); readingStateWritable = false; bookmarks = demoBookmarks.all()
+        await cacheBookmarks()
         connectionError = nil; endpointHost = nil; showConnection = false
         UserDefaults.standard.set(true, forKey: "demoMode")
         UserDefaults.standard.removeObject(forKey: "offlineReading")
@@ -226,9 +248,31 @@ final class AppModel: ObservableObject {
         sessionID = UUID(); bookmarks = []; bookmarkFailure = nil; bookmarksLoading = false
     }
     func bookmark(for book: ReaderBook) -> ReaderBookmark? { bookmarks.first { $0.bookId == book.id } }
+    func series(_ id: String) -> LibrarySeries? {
+        library.first { $0.id == id } ?? downloads.items.first { $0.series.id == id }?.series
+    }
+    private func cacheBookmarks() async {
+        guard let account = downloads.account else { return }
+        let session = sessionID
+        do { try await downloads.store.saveBookmarks(bookmarks, account: account) }
+        catch {
+            if sessionID == session && downloads.account == account {
+                bookmarkFailure = ("Impossibile salvare i segnalibri per l’uso offline. %@", error)
+            }
+        }
+    }
+    private func restoreCachedBookmarks() async {
+        guard let account = downloads.account else { return }
+        let session = sessionID
+        do {
+            let saved = try await downloads.store.bookmarks(account: account)
+            guard downloads.account == account, sessionID == session else { return }
+            bookmarks = saved
+        } catch { bookmarkFailure = ("Impossibile leggere i segnalibri offline. %@", error) }
+    }
     func refreshBookmarks() async {
         guard canUseBookmarks, !bookmarkBusy, !bookmarksLoading else { return }
-        if isDemo { bookmarks = demoBookmarks.all(); bookmarkFailure = nil; return }
+        if isDemo { bookmarks = demoBookmarks.all(); bookmarkFailure = nil; await cacheBookmarks(); return }
         guard let client = api else { return }
         let session = sessionID
         bookmarksLoading = true
@@ -237,6 +281,7 @@ final class AppModel: ObservableObject {
             let result: BookmarksResponse = try await client.get("/v1/bookmarks")
             guard sessionID == session else { return }
             bookmarks = result.items; bookmarkFailure = nil
+            await cacheBookmarks()
         } catch {
             if sessionID == session, !Task.isCancelled { bookmarkFailure = ("Impossibile aggiornare i segnalibri. %@", error) }
         }
@@ -265,6 +310,7 @@ final class AppModel: ObservableObject {
             }
             guard sessionID == session else { return }
             bookmarks.removeAll { $0.seriesId == saved.seriesId }; bookmarks.insert(saved, at: 0)
+            await cacheBookmarks()
         } catch {
             if sessionID == session { bookmarkFailure = ("Segnalibro non confermato. Aggiorna l’elenco per verificarlo. %@", error) }
         }
@@ -284,12 +330,13 @@ final class AppModel: ObservableObject {
             }
             guard sessionID == session else { return }
             bookmarks.removeAll { $0.seriesId == bookmark.seriesId }
+            await cacheBookmarks()
         } catch {
             if sessionID == session { bookmarkFailure = ("Rimozione non confermata. Aggiorna l’elenco per verificarla. %@", error) }
         }
     }
     func books(for series: String) async throws -> [LibraryBook] {
-        if offlineMode { return downloads.items.filter { $0.complete && $0.series.id == series }.map(\.listing) }
+        if offlineMode { return OfflineLibrary.books(seriesID: series, downloads: downloads.items) }
         if isDemo { return try DemoCatalog.books(for: series) }
         guard let api else { throw ReaderError.unavailable(0) }
         let result: BooksResponse = try await api.get("/v1/series/\(try Endpoint.identifier(series))")
