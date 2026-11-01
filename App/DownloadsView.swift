@@ -6,6 +6,7 @@ struct DownloadBookControl: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var downloads: DownloadManager
     @State private var confirmRemove = false
+    private var resumable: Bool { downloads.item(book.id) != nil || downloads.queuePosition(book.id) != nil }
     var body: some View {
         Group {
             if downloads.isQueued(book.id) {
@@ -20,8 +21,8 @@ struct DownloadBookControl: View {
             } else {
                 Button {
                     downloads.enqueue(series: series, books: [book], api: model.api, demo: model.isDemo)
-                } label: { Image(systemName: "arrow.down.circle") }
-                    .accessibilityLabel(L10n.text("Scarica sul dispositivo"))
+                } label: { Image(systemName: resumable ? "arrow.clockwise.circle" : "arrow.down.circle") }
+                    .accessibilityLabel(L10n.text(resumable ? "Riprendi download" : "Scarica sul dispositivo"))
                     .accessibilityIdentifier("download-\(book.id)")
                     .disabled(!model.canDownload)
             }
@@ -29,6 +30,55 @@ struct DownloadBookControl: View {
             .confirmationDialog(L10n.text("Rimuovere questa copia dal dispositivo?"), isPresented: $confirmRemove, titleVisibility: .visible) {
                 Button(L10n.text("Rimuovi download"), role: .destructive) { Task { await downloads.remove(book.id) } }
             } message: { Text(L10n.text("La libreria e i segnalibri sul server restano invariati.")) }
+    }
+}
+
+/// Shared by the series and the global download list; never starts a second
+/// transfer or caches progress separately from DownloadManager.
+struct DownloadBookProgress: View {
+    let bookID: String
+    @EnvironmentObject private var downloads: DownloadManager
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let item = downloads.item(bookID) {
+                if item.complete {
+                    Label(L10n.text("Disponibile offline"), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .accessibilityIdentifier("download-state-\(bookID)")
+                } else {
+                    ProgressView(value: Double(item.downloadedPages), total: Double(item.book.pageCount))
+                        .accessibilityIdentifier("download-progress-\(bookID)")
+                        .accessibilityLabel(L10n.text("Avanzamento download"))
+                        .accessibilityValue(String(item.downloadedPages))
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(L10n.format("%d di %d pagine scaricate", item.downloadedPages, item.book.pageCount))
+                            .accessibilityIdentifier("download-pages-\(bookID)")
+                        Spacer(minLength: 8)
+                        Text(Double(item.downloadedPages) / Double(max(1, item.book.pageCount)), format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit()
+                    }.foregroundStyle(.secondary)
+                    state
+                }
+                Text(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))
+                    .foregroundStyle(.secondary)
+            } else if downloads.queuePosition(bookID) != nil {
+                state
+            }
+            if let failure = downloads.failures[bookID] {
+                Text(failure.localizedDescription).foregroundStyle(.orange)
+                    .accessibilityIdentifier("download-error-\(bookID)")
+            }
+        }.font(.caption)
+    }
+    @ViewBuilder private var state: some View {
+        if !downloads.isQueued(bookID) {
+            Text(L10n.text("In pausa · Riprendi per completare"))
+                .accessibilityIdentifier("download-state-\(bookID)")
+        } else if let position = downloads.queuePosition(bookID) {
+            Label(L10n.format("In coda · posizione %d", position), systemImage: "arrow.down.circle")
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("download-state-\(bookID)")
+        }
     }
 }
 
@@ -75,17 +125,7 @@ struct DownloadsView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(item.series.title).font(.headline).foregroundStyle(.primary)
                                 Text(item.listing.label).foregroundStyle(.primary)
-                                if item.complete {
-                                    Label(L10n.text("Disponibile offline"), systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-                                } else {
-                                    ProgressView(value: Double(item.downloadedPages), total: Double(item.book.pageCount))
-                                        .accessibilityIdentifier("download-progress-\(item.id)")
-                                        .accessibilityValue(String(item.downloadedPages))
-                                    Text(L10n.format("%d di %d pagine scaricate", item.downloadedPages, item.book.pageCount))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                    if !downloads.isQueued(item.id) { Text(L10n.text("In pausa · Riprendi per completare")).font(.caption) }
-                                }
-                                Text(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
+                                DownloadBookProgress(bookID: item.id)
                             }
                         }.buttonStyle(.plain).disabled(!item.complete)
                             .accessibilityIdentifier("offline-book-\(item.id)")

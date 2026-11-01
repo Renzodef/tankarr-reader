@@ -193,6 +193,7 @@ struct SeriesView: View {
     @State private var selected: LibraryBook?
     @State private var showDownloadRange = false
     @State private var confirmRemoveSeries = false
+    @State private var removeBookID: String?
     private var bookmarkDownloads: [LibraryBook] {
         DownloadSelection.fromBookmark(model.bookmarks.first { $0.seriesId == series.id }, seriesID: series.id, books: books)
     }
@@ -203,22 +204,39 @@ struct SeriesView: View {
             }
             if loading { ProgressView(L10n.text("Carico i libri…")) }
             if let error { Section { Text(error); Button(L10n.text("Riprova")) { Task { await load() } } } }
+            if downloads.hasDownloads(seriesID: series.id) {
+                Section(L10n.text("Download della serie")) {
+                    Text(L10n.format("%d libri scaricati · %d in coda",
+                        downloads.items.filter { $0.series.id == series.id && $0.complete }.count,
+                        downloads.queuedCount(seriesID: series.id)))
+                        .accessibilityIdentifier("series-download-summary")
+                    if let error = downloads.storageError { Text(error.localizedDescription).foregroundStyle(.orange) }
+                }
+            }
             Section(L10n.text("Disponibili da leggere")) {
                 ForEach(books) { book in
-                    HStack(spacing: 12) {
-                      Button { selected = book } label: {
+                    VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 12) {
-                            Image(systemName: model.position(book.id) > 0 ? "book.pages" : "book.closed").foregroundStyle(.orange)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(book.label).foregroundStyle(.primary)
-                                if !book.title.isEmpty { Text(book.title).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
-                            }
-                            Spacer()
-                            Text(book.language.uppercased()).font(.caption2).foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            Button { selected = book } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: model.position(book.id) > 0 ? "book.pages" : "book.closed").foregroundStyle(.orange)
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(book.label).foregroundStyle(.primary)
+                                        if !book.title.isEmpty { Text(book.title).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                                    }
+                                    Spacer()
+                                    Text(book.language.uppercased()).font(.caption2).foregroundStyle(.secondary)
+                                    Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                                }
+                            }.buttonStyle(.plain)
+                            DownloadBookControl(series: series, book: book)
                         }
-                      }.buttonStyle(.plain)
-                      DownloadBookControl(series: series, book: book)
+                        DownloadBookProgress(bookID: book.id)
+                    }.padding(.vertical, 4)
+                    .swipeActions {
+                        if downloads.item(book.id) != nil || downloads.queuePosition(book.id) != nil {
+                            Button(L10n.text("Rimuovi download"), role: .destructive) { removeBookID = book.id }
+                        }
                     }
                 }
             }
@@ -257,6 +275,14 @@ struct SeriesView: View {
                     }
                 }.accessibilityIdentifier("confirm-remove-series-downloads")
             } message: { Text(L10n.text("La libreria e i segnalibri sul server restano invariati.")) }
+            .confirmationDialog(L10n.text("Rimuovere questa copia dal dispositivo?"), isPresented: Binding(
+                get: { removeBookID != nil }, set: { if !$0 { removeBookID = nil } }), titleVisibility: .visible) {
+                    if let id = removeBookID {
+                        Button(L10n.text("Rimuovi download"), role: .destructive) {
+                            Task { await downloads.remove(id) }; removeBookID = nil
+                        }
+                    }
+                } message: { Text(L10n.text("La libreria e i segnalibri sul server restano invariati.")) }
     }
     private func enqueue(_ selection: [LibraryBook]) {
         downloads.enqueue(series: series, books: selection, api: model.api, demo: model.isDemo)

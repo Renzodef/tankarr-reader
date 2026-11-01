@@ -154,4 +154,46 @@ final class BackgroundDownloadUITests: XCTestCase {
         XCTAssertFalse(app.buttons["offline-book-bg-book-2"].exists)
         XCTAssertFalse(app.buttons["remove-all-downloads"].exists)
     }
+
+    func testSeriesSharesLiveProgressPauseResumeAndRemovalWithDownloads() {
+        app.staticTexts["Background download fixture"].firstMatch.tap()
+        app.buttons["series-downloads"].tap()
+        app.buttons["download-series"].tap()
+        let progress = app.progressIndicators["download-progress-bg-book-1"]
+        waitUntil({ (Int(progress.value as? String ?? "0") ?? 0) >= 1 }, seconds: 45)
+        XCTAssertTrue(app.staticTexts["download-pages-bg-book-1"].exists)
+        XCTAssertTrue(app.staticTexts["series-download-summary"].label.contains("2 in coda"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "series-live-download-progress"; screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        app.buttons["pause-download-bg-book-1"].tap()
+        XCTAssertTrue(app.buttons["download-bg-book-1"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons["download-bg-book-1"].label, "Riprendi download")
+        XCTAssertTrue(app.staticTexts["download-state-bg-book-1"].label.contains("In pausa"))
+        let savedPages = progress.value as? String
+        XCTAssertNotNil(savedPages)
+
+        // Both screens must use the same saved count and state, not independent
+        // timers that appear to restart a download when navigating between them.
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["downloads"].tap()
+        XCTAssertEqual(app.progressIndicators["download-progress-bg-book-1"].value as? String, savedPages)
+        XCTAssertTrue(app.buttons["download-bg-book-1"].exists)
+        app.buttons["Chiudi"].tap()
+        app.staticTexts["Background download fixture"].firstMatch.tap()
+        XCTAssertEqual(progress.value as? String, savedPages)
+        app.buttons["download-bg-book-1"].tap()
+        XCTAssertTrue(app.buttons["pause-download-bg-book-1"].waitForExistence(timeout: 10))
+        assertComplete()
+        XCTAssertTrue(app.staticTexts["series-download-summary"].label.contains("2 libri scaricati"))
+        XCTAssertFalse(progress.exists)
+
+        app.buttons["remove-download-bg-book-1"].tap()
+        app.buttons["Rimuovi download"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["download-bg-book-1"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["remove-download-bg-book-1"].exists)
+        XCTAssertTrue(app.buttons["remove-download-bg-book-2"].exists)
+        XCTAssertFalse(app.staticTexts["download-pages-bg-book-1"].exists)
+    }
 }

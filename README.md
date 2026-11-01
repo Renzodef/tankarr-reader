@@ -79,8 +79,8 @@ I gateway precedenti continuano a offrire lettura e ripresa locale.
 ## Download sul dispositivo
 
 Nell'elenco di una serie, la freccia accanto a un capitolo o volume avvia il
-download locale. **Scarica tutti** mette in coda i libri della serie, uno alla
-volta. Non avvia ricerche né acquisizioni sul server: copia soltanto pagine già
+download locale. **Scarica tutti** mette in coda i libri nell'ordine della
+serie. Non avvia ricerche né acquisizioni sul server: copia soltanto pagine già
 accessibili all'account lettore, usando gli stessi endpoint autenticati.
 
 Il menu **Download della serie** in alto offre **Scarica intervallo…**, con due
@@ -99,6 +99,14 @@ di tutte le pagine; i trasferimenti interrotti conservano quelle già ricevute e
 **Riprendi** scarica soltanto le mancanti o danneggiate. Se la rete o il disco
 falliscono, la coda resta salvata, senza ritentare indefinitamente: **Riprendi la
 coda**, il ritorno nell'app o la riconnessione riprovano le pagine mancanti.
+
+Gli stessi indicatori compaiono direttamente sotto ogni capitolo nella **serie**:
+barra e percentuale, pagine salvate sul totale, spazio occupato, ordine in coda,
+pausa o disponibilità offline ed eventuali errori. I comandi accanto al capitolo
+mettono in pausa o riprendono; lo scorrimento laterale permette la rimozione
+con conferma, anche per un download incompleto. Il riepilogo della serie mostra
+libri completi e libri in coda. Le due schermate osservano gli stessi dati:
+cambiare pagina non avvia un secondo trasferimento e non azzera l'avanzamento.
 
 I trasferimenti reali usano una `URLSession` background: continuano quando si
 cambia app o si blocca lo schermo. L'intera selezione viene salvata prima di

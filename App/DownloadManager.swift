@@ -32,6 +32,18 @@ final class DownloadManager: ObservableObject {
     var totalBytes: Int64 { items.reduce(0) { $0 + $1.bytes } }
     func item(_ id: String) -> OfflineDownload? { items.first { $0.id == id } }
     func isQueued(_ id: String) -> Bool { activeID == id || (!backgroundPaused && queuedIDs.contains(id)) }
+    /// Includes durable jobs waiting for metadata or paused by a network error.
+    /// This is the selection order, not a claim that iOS transfers only one book.
+    func queuePosition(_ id: String) -> Int? {
+        if let index = backgroundJobs.firstIndex(where: { $0.listing.id == id }) { return index + 1 }
+        if activeID == id { return 1 }
+        return pending.firstIndex(where: { $0.listing.id == id }).map { $0 + (activeID == nil ? 1 : 2) }
+    }
+    func queuedCount(seriesID: String) -> Int {
+        Set(backgroundJobs.filter { $0.series.id == seriesID }.map { $0.listing.id })
+            .union(pending.filter { $0.series.id == seriesID }.map { $0.listing.id })
+            .union(activeSeriesID == seriesID ? [activeID].compactMap { $0 } : []).count
+    }
     func hasDownloads(seriesID: String) -> Bool {
         items.contains { $0.series.id == seriesID } || pending.contains { $0.series.id == seriesID }
             || activeSeriesID == seriesID || backgroundJobs.contains { $0.series.id == seriesID }
