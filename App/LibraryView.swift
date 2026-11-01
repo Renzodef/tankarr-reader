@@ -81,8 +81,14 @@ struct LibraryView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 HStack {
-                    Image(systemName: "lock.shield")
-                    Text(L10n.text("Libreria in sola lettura")).font(.caption)
+                    if model.offlineMode {
+                        Button { Task { await model.reconnect() } } label: {
+                            Label(L10n.text("Torna online"), systemImage: "wifi")
+                        }.font(.caption).disabled(model.busy).accessibilityIdentifier("return-online")
+                    } else {
+                        Image(systemName: "lock.shield")
+                        Text(L10n.text("Libreria in sola lettura")).font(.caption)
+                    }
                     Spacer()
                     Text(model.endpointLabel).font(.caption2).lineLimit(1)
                 }.foregroundStyle(.secondary).padding(.horizontal).padding(.vertical, 8).background(.bar)
@@ -114,6 +120,8 @@ struct BookmarksView: View {
                 Section {
                     Text(L10n.text(model.isDemo ? "I segnalibri della demo restano su questo dispositivo." : model.offlineMode ? "Segnalibri delle serie scaricate. Le modifiche restano sul dispositivo e si sincronizzano quando torni online." :
                         "Un segnalibro per serie, condiviso con Tankarr e gli altri dispositivi. Salvalo dal lettore per scegliere dove riprendere."))
+                        .font(.callout).foregroundStyle(.secondary)
+                    Text(L10n.text("Apri un capitolo e tocca l’icona Segnalibro in alto, poi Salva segnalibro."))
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 if !model.pendingBookmarkSeries.isEmpty {
@@ -192,21 +200,47 @@ struct CoverView: View {
 }
 
 struct SeriesView: View {
+    private struct Opening: Identifiable {
+        let id: String
+        var page: Int? = nil
+    }
     let series: LibrarySeries
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var downloads: DownloadManager
     @State private var books: [LibraryBook] = []
     @State private var loading = true
     @State private var error: String?
-    @State private var selected: LibraryBook?
+    @State private var selected: Opening?
+    @State private var bookmarkUnavailable = false
     @State private var showDownloadRange = false
     @State private var confirmRemoveSeries = false
     @State private var removeBookID: String?
     private var bookmarkDownloads: [LibraryBook] {
         DownloadSelection.fromBookmark(model.bookmarks.first { $0.seriesId == series.id }, seriesID: series.id, books: books)
     }
+    private var bookmark: ReaderBookmark? { model.bookmarks.first { $0.seriesId == series.id } }
     var body: some View {
         List {
+            if let bookmark {
+                Section {
+                    Button {
+                        if model.offlineMode && downloads.item(bookmark.bookId)?.complete != true {
+                            bookmarkUnavailable = true
+                        } else { selected = Opening(id: bookmark.bookId, page: bookmark.pageIndex) }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Label(L10n.text("Riprendi dal segnalibro"), systemImage: "bookmark.fill").font(.headline)
+                            Text(L10n.format("%@ · Pagina %d", bookmark.label, bookmark.pageIndex + 1))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }.padding(.vertical, 4)
+                    }.accessibilityIdentifier("series-resume-bookmark")
+                }
+            } else if model.canUseBookmarks {
+                Section {
+                    Label(L10n.text("Apri un capitolo e tocca l’icona Segnalibro in alto, poi Salva segnalibro."), systemImage: "bookmark")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            }
             if !series.description.isEmpty {
                 Section { Text(series.description).font(.callout).foregroundStyle(.secondary).lineLimit(7) }
             }
@@ -225,7 +259,7 @@ struct SeriesView: View {
                 ForEach(books) { book in
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 12) {
-                            Button { selected = book } label: {
+                            Button { selected = Opening(id: book.id) } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: model.position(book.id) > 0 ? "book.pages" : "book.closed").foregroundStyle(.orange)
                                     VStack(alignment: .leading, spacing: 3) {
@@ -268,12 +302,15 @@ struct SeriesView: View {
                         .accessibilityLabel(L10n.text("Download della serie")).accessibilityIdentifier("series-downloads")
                 }
             }
-            .task { await load(); await model.refreshBookmarks() }
+            .task(id: model.offlineMode) { await load(); await model.refreshBookmarks() }
             .refreshable { await load(); await model.refreshBookmarks() }
             .onChange(of: downloads.items.filter { $0.complete && $0.series.id == series.id }.map(\.id)) { _, _ in
                 if model.offlineMode { books = OfflineLibrary.books(seriesID: series.id, downloads: downloads.items) }
             }
-            .fullScreenCover(item: $selected) { ReaderView(bookID: $0.id) }
+            .fullScreenCover(item: $selected) { ReaderView(bookID: $0.id, openingPage: $0.page) }
+            .alert(L10n.text("Segnalibro non disponibile offline"), isPresented: $bookmarkUnavailable) {
+                Button(L10n.text("OK"), role: .cancel) {}
+            } message: { Text(L10n.text("Il capitolo del segnalibro non è scaricato. Torna online per leggerlo.")) }
             .sheet(isPresented: $showDownloadRange) { SeriesDownloadRangeView(series: series, books: books) }
             .confirmationDialog(L10n.text("Rimuovere tutti i download di questa serie?"), isPresented: $confirmRemoveSeries, titleVisibility: .visible) {
                 Button(L10n.text("Rimuovi download della serie"), role: .destructive) {
@@ -345,6 +382,10 @@ struct ConnectionView: View {
                     Text(L10n.text("La password resta nel Portachiavi. L’ultima pagina letta è ricordata su questo dispositivo; i segnalibri salvati dal lettore sono condivisi con Tankarr. In Automatico provo prima l’indirizzo locale e poi HTTPS; aggiorna la libreria per cambiare rete."))
                 }
                 if let error = importError ?? model.error { Section { Text(error).foregroundStyle(.red) } }
+                Section(L10n.text("Modalità offline")) {
+                    Text(L10n.text("Il pulsante con il Wi-Fi barrato mostra solo i download. Se manca la rete, l’app passa automaticamente alle copie scaricate e riprova al ritorno della rete o alla riapertura. Se attivi Offline tu, resta attivo finché tocchi Torna online."))
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 Section { NavigationLink(L10n.text("Privacy e assistenza")) { PrivacyView() } }
                 if model.canBrowse {
                     Section {

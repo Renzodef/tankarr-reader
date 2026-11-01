@@ -37,6 +37,14 @@ cambiano pagina lungo l'asse scelto; in verticale si usano gesti su/giù e frecc
 su/giù, in orizzontale vale il verso di lettura scelto. Con lo zoom attivo, il
 trascinamento sposta l'immagine senza cambiare pagina.
 
+La barra di avanzamento segue il verso orizzontale: con **Destra → sinistra**
+la prima pagina è all'estremità destra. In verticale la barra parte da sinistra.
+Alla fine di un capitolo, avanti apre il successivo alla prima pagina; alla
+prima pagina, indietro apre il precedente all'ultima. In continuo si può anche
+trascinare oltre il bordo, senza cambiare capitolo per il solo scorrimento
+inerziale. Si seguono i capitoli adiacenti dichiarati dal server: offline, se
+quello richiesto non è scaricato, compare un avviso e la pagina resta aperta.
+
 **Scorrimento continuo** mostra tutte le pagine del capitolo in sequenza:
 dall'alto verso il basso in verticale, oppure da sinistra a destra o da destra a
 sinistra in orizzontale. Le immagini vengono caricate man mano che servono e
@@ -67,7 +75,10 @@ Il cambio pagina ricorda automaticamente l'ultima posizione sul dispositivo;
 aggiornare il segnalibro condiviso richiede un'azione esplicita, come nel sito
 Tankarr. Aprire un volume riprende la posizione locale, se presente; altrimenti
 usa il segnalibro del server. Aprirlo dall'elenco Segnalibri usa sempre la pagina
-del segnalibro. Le modifiche esplicite vengono prima salvate sul dispositivo:
+del segnalibro, così come **Riprendi dal segnalibro** nella scheda della serie.
+Questa scelta prevale sull'ultima posizione locale. Se il capitolo segnato non
+è disponibile offline, il pulsante lo spiega senza avviare richieste in rete.
+Le modifiche esplicite vengono prima salvate sul dispositivo:
 se manca la connessione restano in attesa e vengono sincronizzate al ritorno
 online. Un errore di sincronizzazione viene mostrato senza perdere la modifica.
 
@@ -127,6 +138,14 @@ copertine dei download e una fotografia dei segnalibri, separata per account e
 server, anche dopo il riavvio. Se il capitolo segnato non è scaricato, la riga
 lo spiega e apre la serie invece di tentare una lettura in rete. Il filtro si
 aggiorna subito quando si cancellano le copie locali.
+
+In basso, **Torna online** ricollega al server. Offline scelto a mano resta
+attivo anche dopo la riapertura. Con copie complete sul dispositivo, la perdita
+di rete rilevata da iOS o un errore di raggiungibilità durante la lettura apre
+invece **Offline automatico**: l'app riprova al ritorno della rete o quando viene
+riportata in primo piano. Non esiste un timer di riconnessione. Errori di password,
+certificato o risposta del server restano visibili. La sincronizzazione dei
+segnalibri e la coda di download riprendono solo dopo la connessione riuscita.
 
 **Usa senza connessione** nella schermata Download attiva la stessa modalità;
 toccare nuovamente il tasto in alto o **Ricollega al server** torna alla libreria
