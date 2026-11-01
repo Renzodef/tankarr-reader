@@ -14,7 +14,7 @@ struct PrivacyView: View {
             Section(L10n.text("Sul tuo dispositivo")) {
                 Text(L10n.text("La password del lettore è custodita nel Portachiavi e non viene sincronizzata con iCloud. Indirizzi del server, nome utente, preferenze, ultima pagina letta e segnalibri della demo restano nei dati dell’app; possono essere inclusi nei backup del dispositivo."))
                 Text(L10n.text("I download scelti da te restano nell’archivio privato dell’app, protetti dal dispositivo ed esclusi dal backup iCloud. Sono separati per server e account. Puoi rimuoverli da Download senza cancellare nulla sul server."))
-                Text(L10n.text("Una copia dei segnalibri e le copertine dei download sono salvate nello stesso archivio privato per consultarli offline. La copia dei segnalibri si aggiorna quando ti colleghi al server."))
+                Text(L10n.text("Una copia dei segnalibri, le modifiche in attesa di sincronizzazione e le copertine dei download restano nell’archivio privato, separate per server e account. Le modifiche ai segnalibri vengono inviate quando torni online; fino alla conferma del server restano sul dispositivo."))
             }
             Section(L10n.text("Quando ti colleghi")) {
                 Text(L10n.text("L’app invia credenziali e richieste di lettura soltanto al server che configuri. Il suo gestore può vedere l’indirizzo IP e le risorse richieste secondo le proprie regole di conservazione. HTTPS verifica il certificato; HTTP è disponibile soltanto sulla rete locale."))
@@ -24,7 +24,7 @@ struct PrivacyView: View {
                 Text(L10n.text("Nessuna pubblicità, SDK di analisi o profilazione. La libreria dimostrativa funziona sul dispositivo, senza account e senza richieste di rete."))
             }
             Section(L10n.text("Gestisci i dati")) {
-                Text(L10n.text("Disconnetti elimina il profilo, la password e i download dell’account corrente. I progressi di lettura locali si cancellano separatamente. Per rimuovere un segnalibro dal server usa l’elenco Segnalibri o il menu del lettore quando sei connesso."))
+                Text(L10n.text("Disconnetti elimina il profilo, la password, i download e le modifiche ai segnalibri non sincronizzate dell’account corrente. Rimuovere soltanto i download conserva le modifiche pendenti. I progressi di lettura locali si cancellano separatamente. Per rimuovere un segnalibro condiviso usa l’elenco Segnalibri o il menu del lettore."))
                 Button(L10n.text("Cancella dati di lettura locali"), role: .destructive) { confirmClear = true }
                 if cleared { Text(L10n.text("Dati di lettura locali cancellati.")).foregroundStyle(.secondary) }
             }

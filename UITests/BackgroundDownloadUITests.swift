@@ -11,6 +11,8 @@ private final class BackgroundReaderServer: @unchecked Sendable {
     private let lock = NSLock()
     private var received: [(String, Date)] = []
     private var sent: [String] = []
+    private var savedBookmark: [String: Any]?
+    private var rejectWrites = false
     let pages = 8
     private(set) var port: UInt16 = 0
     private let png: Data
@@ -39,18 +41,34 @@ private final class BackgroundReaderServer: @unchecked Sendable {
     var address: String { "http://127.0.0.1:\(port)" }
     var requests: [(String, Date)] { lock.lock(); defer { lock.unlock() }; return received }
     var delivered: [String] { lock.lock(); defer { lock.unlock() }; return sent }
+    var bookmarkPage: Int? { lock.lock(); defer { lock.unlock() }; return savedBookmark?["page_index"] as? Int }
+    var failBookmarkWrites: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return rejectWrites }
+        set { lock.lock(); defer { lock.unlock() }; rejectWrites = newValue }
+    }
     func stop() { listener.cancel() }
     private func receive(_ connection: NWConnection, buffered: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { [weak self] data, _, complete, error in
             guard let self, let data, error == nil else { connection.cancel(); return }
             var buffer = buffered; buffer.append(data)
-            if let text = String(data: buffer, encoding: .utf8), text.contains("\r\n\r\n") {
-                let path = text.split(separator: " ").dropFirst().first.map(String.init) ?? ""
+            if let separator = buffer.range(of: Data("\r\n\r\n".utf8)),
+               let text = String(data: buffer[..<separator.lowerBound], encoding: .utf8) {
+                let lengthLine = text.components(separatedBy: "\r\n").first { $0.lowercased().hasPrefix("content-length:") }
+                let length = lengthLine.flatMap { Int($0.split(separator: ":", maxSplits: 1)[1].trimmingCharacters(in: .whitespaces)) } ?? 0
+                guard length >= 0, length < 16384 else { connection.cancel(); return }
+                if buffer.count - separator.upperBound < length {
+                    if !complete { self.receive(connection, buffered: buffer) } else { connection.cancel() }
+                    return
+                }
+                let parts = text.components(separatedBy: "\r\n")[0].split(separator: " ")
+                guard parts.count >= 2 else { connection.cancel(); return }
+                let method = String(parts[0]), path = String(parts[1])
                 self.lock.lock(); self.received.append((path, Date())); self.lock.unlock()
-                let body = self.body(path)
+                let payload = buffer.subdata(in: separator.upperBound..<(separator.upperBound + length))
+                let (status, body) = self.response(method, path: path, payload: payload)
                 let isPage = path.contains("/pages/")
                 self.queue.asyncAfter(deadline: .now() + (isPage ? self.delay : 0)) {
-                    let header = "HTTP/1.1 200 OK\r\nContent-Type: \(isPage || path.hasSuffix("/cover") ? "image/png" : "application/json")\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+                    let header = "HTTP/1.1 \(status)\r\nContent-Type: \(isPage || path.hasSuffix("/cover") ? "image/png" : "application/json")\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
                     connection.send(content: Data(header.utf8) + body, completion: .contentProcessed { error in
                         if error == nil, isPage { self.lock.lock(); self.sent.append(path); self.lock.unlock() }
                         connection.cancel()
@@ -60,14 +78,30 @@ private final class BackgroundReaderServer: @unchecked Sendable {
             else { connection.cancel() }
         }
     }
-    private func body(_ path: String) -> Data {
-        if path.contains("/pages/") || path.hasSuffix("/cover") { return png }
+    private func response(_ method: String, path: String, payload: Data) -> (String, Data) {
+        if path.contains("/pages/") || path.hasSuffix("/cover") { return ("200 OK", png) }
+        if path == "/v1/series/background-series/bookmark" {
+            lock.lock(); defer { lock.unlock() }
+            if rejectWrites { return ("503 Service Unavailable", Data("{}".utf8)) }
+            if method == "PUT", let input = (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any],
+               let book = input["book_id"] as? String, let page = input["page_index"] as? Int {
+                savedBookmark = ["series_id": "background-series", "series_title": "Background download fixture",
+                    "book_id": book, "label": "Fixture", "page_index": page, "updated_at": "2026-11-01T08:00:00Z"]
+                return ("200 OK", try! JSONSerialization.data(withJSONObject: savedBookmark!))
+            }
+            if method == "DELETE" { savedBookmark = nil; return ("200 OK", Data("{}".utf8)) }
+            return ("400 Bad Request", Data("{}".utf8))
+        }
         let value: [String: Any]
         let series: [String: Any] = ["id": "background-series", "title": "Background download fixture",
             "description": "Original test images", "authors": [], "language": "it", "books_count": 2,
             "cover_path": "/v1/series/background-series/cover"]
         switch path {
-        case "/v1/status": value = ["name": "Tankarr Reader", "api_version": 1, "read_only": true, "instance_id": instance]
+        case "/v1/status": value = ["name": "Tankarr Reader", "api_version": 1, "read_only": true,
+            "reading_state_writable": true, "instance_id": instance]
+        case "/v1/bookmarks":
+            lock.lock(); let items = savedBookmark.map { [$0] } ?? []; lock.unlock()
+            value = ["items": items]
         case "/v1/library": value = ["items": [series]]
         case "/v1/series/background-series":
             value = ["books": (1...2).map { n in ["id": "bg-book-\(n)", "label": "Capitolo \(n)", "title": "Fixture \(n)",
@@ -77,7 +111,7 @@ private final class BackgroundReaderServer: @unchecked Sendable {
                 "series_title": "Background download fixture", "title": "Fixture", "page_count": pages, "direction": "ltr", "mode": "paged"]
         default: value = ["items": []]
         }
-        return try! JSONSerialization.data(withJSONObject: value)
+        return ("200 OK", try! JSONSerialization.data(withJSONObject: value))
     }
 }
 
@@ -195,5 +229,61 @@ final class BackgroundDownloadUITests: XCTestCase {
         XCTAssertFalse(app.buttons["remove-download-bg-book-1"].exists)
         XCTAssertTrue(app.buttons["remove-download-bg-book-2"].exists)
         XCTAssertFalse(app.staticTexts["download-pages-bg-book-1"].exists)
+    }
+
+    func testOfflineBookmarkSurvivesRelaunchRetriesFailureAndSyncsRemoval() {
+        server.delay = 1
+        queueBooks(); assertComplete()
+        app.buttons["use-offline"].tap()
+        app.buttons["offline-book-bg-book-1"].tap()
+        XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
+        app.buttons["Pagina successiva"].tap()
+        waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 10)
+        app.buttons["Segnalibro"].tap(); app.buttons["Salva segnalibro"].tap()
+        XCTAssertTrue(app.staticTexts["Segnalibro a pagina 2"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.otherElements["bookmark-sync-pending"].exists || app.staticTexts["bookmark-sync-pending"].exists)
+        XCTAssertNil(server.bookmarkPage, "Offline editing must not contact the server")
+
+        // Use normal production restore, not the fixture's connect-on-launch shortcut.
+        app.terminate()
+        app.launchArguments = ["-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 15))
+        app.buttons["Segnalibri"].tap()
+        XCTAssertTrue(app.buttons["bookmark-background-series"].waitForExistence(timeout: 10))
+        app.buttons["bookmark-background-series"].tap()
+        XCTAssertTrue(app.staticTexts["Segnalibro a pagina 2"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.otherElements["bookmark-sync-pending"].exists || app.staticTexts["bookmark-sync-pending"].exists)
+        app.buttons["Chiudi libro"].tap(); app.buttons["Chiudi"].tap()
+
+        server.failBookmarkWrites = true
+        app.buttons["offline-mode"].tap()
+        waitUntil({ self.app.buttons["offline-mode"].value as? String == "Disattiva" }, seconds: 15)
+        app.buttons["Segnalibri"].tap()
+        XCTAssertTrue(app.buttons["Aggiorna segnalibri"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["bookmark-background-series"].exists)
+        XCTAssertNil(server.bookmarkPage, "A failed request must keep the local edit for retry")
+        server.failBookmarkWrites = false
+        // Reopening online must retry without asking the reader to save again.
+        app.terminate(); app.launch()
+        waitUntil({ self.server.bookmarkPage == 1 }, seconds: 15)
+        XCTAssertTrue(app.buttons["Segnalibri"].waitForExistence(timeout: 15))
+        app.buttons["Segnalibri"].tap()
+        waitUntil({ !self.app.otherElements["bookmark-sync-pending"].exists && !self.app.staticTexts["bookmark-sync-pending"].exists }, seconds: 10)
+        app.buttons["Chiudi"].tap()
+
+        app.buttons["offline-mode"].tap()
+        waitUntil({ self.app.buttons["offline-mode"].value as? String == "Attiva" }, seconds: 10)
+        app.buttons["Segnalibri"].tap(); app.buttons["bookmark-background-series"].tap()
+        waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 10)
+        app.buttons["Segnalibro"].tap(); app.buttons["Rimuovi segnalibro"].tap()
+        waitUntil({ !self.app.staticTexts["Segnalibro a pagina 2"].exists }, seconds: 10)
+        XCTAssertEqual(server.bookmarkPage, 1)
+        app.buttons["Chiudi libro"].tap(); app.buttons["Chiudi"].tap()
+        app.buttons["offline-mode"].tap()
+        waitUntil({ self.server.bookmarkPage == nil }, seconds: 15)
+        app.buttons["Segnalibri"].tap()
+        XCTAssertTrue(app.staticTexts["Nessun segnalibro"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["bookmark-background-series"].exists)
     }
 }

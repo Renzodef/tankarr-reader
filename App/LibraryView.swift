@@ -112,9 +112,17 @@ struct BookmarksView: View {
         NavigationStack {
             List {
                 Section {
-                    Text(L10n.text(model.offlineMode ? "Segnalibri salvati delle serie scaricate. Per modificarli o aggiornarli, ricollegati al server." : model.isDemo ? "I segnalibri della demo restano su questo dispositivo." :
+                    Text(L10n.text(model.isDemo ? "I segnalibri della demo restano su questo dispositivo." : model.offlineMode ? "Segnalibri delle serie scaricate. Le modifiche restano sul dispositivo e si sincronizzano quando torni online." :
                         "Un segnalibro per serie, condiviso con Tankarr e gli altri dispositivi. Salvalo dal lettore per scegliere dove riprendere."))
                         .font(.callout).foregroundStyle(.secondary)
+                }
+                if !model.pendingBookmarkSeries.isEmpty {
+                    Section {
+                        Label(L10n.format("%d modifiche in attesa di sincronizzazione", model.pendingBookmarkSeries.count),
+                              systemImage: "arrow.triangle.2.circlepath")
+                            .font(.callout).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("bookmark-sync-pending")
+                    }
                 }
                 if let error = model.bookmarkError {
                     Section { Text(error).foregroundStyle(.orange); Button(L10n.text("Aggiorna segnalibri")) { Task { await model.refreshBookmarks() } } }
@@ -350,7 +358,10 @@ struct ConnectionView: View {
                     Button(L10n.text("Disconnetti"), role: .destructive) {
                         Task { await model.disconnect(); password = ""; profile = model.profile }
                     }
-                } message: { Text(L10n.text("La libreria e i segnalibri sul server restano invariati.")) }
+                } message: {
+                    Text(L10n.text(model.pendingBookmarkSeries.isEmpty ? "La libreria e i segnalibri sul server restano invariati." :
+                        "Le modifiche ai segnalibri non ancora sincronizzate saranno eliminate dal dispositivo. I segnalibri sul server restano invariati."))
+                }
                 .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
                     do {
                         let url = try result.get(); let granted = url.startAccessingSecurityScopedResource()

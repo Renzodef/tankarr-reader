@@ -140,7 +140,7 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["offline-book-\(id)"].tap()
         XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["Segnalibro"].exists, "Offline reading must not promise a server bookmark write")
+        XCTAssertTrue(app.buttons["Segnalibro"].exists, "Demo bookmarks can also be changed offline and stay local")
         app.buttons["Pagina successiva"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 10))
         // Closing waits for the local page save before checking a cold launch.

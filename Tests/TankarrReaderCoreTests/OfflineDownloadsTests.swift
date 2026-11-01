@@ -190,7 +190,7 @@ final class OfflineDownloadsTests: XCTestCase {
         let foreignCover = try await reopened.cover(seriesID: series.id, account: other)
         XCTAssertTrue(foreign.isEmpty); XCTAssertNil(foreignCover)
         let folder = root.appendingPathComponent(account.key).appendingPathComponent(".metadata")
-        let mode = try FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent("bookmarks.json").path)[.posixPermissions] as? NSNumber
+        let mode = try FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent("bookmarks-sync.json").path)[.posixPermissions] as? NSNumber
         XCTAssertEqual(mode?.intValue, 0o600)
         XCTAssertEqual(try folder.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
     }

@@ -151,16 +151,49 @@ public actor OfflineStore {
         try write(data, to: metadataURL("background-queue.json", account: account))
     }
     public func saveBookmarks(_ bookmarks: [ReaderBookmark], account: OfflineAccount) throws {
-        let data = try JSONEncoder().encode(bookmarks)
+        var state = try bookmarkState(account: account)
+        state.snapshot = bookmarks
+        try saveBookmarkState(state, account: account)
+    }
+    private func saveBookmarkState(_ state: OfflineBookmarks, account: OfflineAccount) throws {
+        try state.validate(for: account)
+        let data = try JSONEncoder().encode(state)
         guard data.count <= 8 * 1024 * 1024 else { throw OfflineError.invalidStorage }
         try checkSpace(for: data.count)
-        try write(data, to: metadataURL("bookmarks.json", account: account))
+        try write(data, to: metadataURL("bookmarks-sync.json", account: account))
     }
     public func bookmarks(account: OfflineAccount) throws -> [ReaderBookmark] {
-        let file = try metadataURL("bookmarks.json", account: account)
-        guard fm.fileExists(atPath: file.path) else { return [] }
-        guard try regularSize(file) <= 8 * 1024 * 1024 else { throw OfflineError.invalidStorage }
-        return try JSONDecoder().decode([ReaderBookmark].self, from: Data(contentsOf: file))
+        try bookmarkState(account: account).visible
+    }
+    public func bookmarkState(account: OfflineAccount) throws -> OfflineBookmarks {
+        let file = try metadataURL("bookmarks-sync.json", account: account)
+        if fm.fileExists(atPath: file.path) {
+            guard try regularSize(file) <= 8 * 1024 * 1024 else { throw OfflineError.invalidStorage }
+            let state = try JSONDecoder().decode(OfflineBookmarks.self, from: Data(contentsOf: file))
+            try state.validate(for: account)
+            return state
+        }
+        // Upgrade the existing read-only cache without discarding any bookmarks.
+        let legacy = try metadataURL("bookmarks.json", account: account)
+        guard fm.fileExists(atPath: legacy.path) else { return OfflineBookmarks(account: account) }
+        guard try regularSize(legacy) <= 8 * 1024 * 1024 else { throw OfflineError.invalidStorage }
+        let state = OfflineBookmarks(account: account, snapshot: try JSONDecoder().decode([ReaderBookmark].self, from: Data(contentsOf: legacy)))
+        try state.validate(for: account)
+        return state
+    }
+    public func setBookmarkWritable(_ writable: Bool, account: OfflineAccount) throws {
+        var state = try bookmarkState(account: account); state.writable = writable
+        try saveBookmarkState(state, account: account)
+    }
+    public func queueBookmark(seriesID: String, value: ReaderBookmark?, account: OfflineAccount) throws {
+        var state = try bookmarkState(account: account)
+        try state.enqueue(seriesID: seriesID, value: value)
+        try saveBookmarkState(state, account: account)
+    }
+    public func acknowledgeBookmark(_ id: UUID, confirmed: ReaderBookmark?, account: OfflineAccount) throws {
+        var state = try bookmarkState(account: account)
+        try state.acknowledge(id, confirmed: confirmed)
+        try saveBookmarkState(state, account: account)
     }
     public func saveCover(_ data: Data, seriesID: String, account: OfflineAccount) throws {
         guard !data.isEmpty, data.count <= 2 * 1024 * 1024 else { throw OfflineError.invalidPage }
@@ -258,8 +291,19 @@ public actor OfflineStore {
         let folder = try bookURL(id, account: account)
         if fm.fileExists(atPath: folder.path) { try fm.removeItem(at: folder) }
     }
-    public func removeAll(account: OfflineAccount) throws {
-        try fm.removeItem(at: accountURL(account))
+    public func removeAll(account: OfflineAccount, includingBookmarks: Bool = false) throws {
+        let folder = try accountURL(account)
+        if includingBookmarks { try fm.removeItem(at: folder); return }
+        // Removing offline media must not discard unsent reading bookmarks.
+        for child in try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) {
+            if child.lastPathComponent == ".metadata" {
+                try directory(child)
+                for metadata in try fm.contentsOfDirectory(at: child, includingPropertiesForKeys: nil)
+                    where !["bookmarks.json", "bookmarks-sync.json"].contains(metadata.lastPathComponent) {
+                    try fm.removeItem(at: metadata)
+                }
+            } else { try fm.removeItem(at: child) }
+        }
     }
     private static func hash(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()

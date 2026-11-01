@@ -67,8 +67,9 @@ Il cambio pagina ricorda automaticamente l'ultima posizione sul dispositivo;
 aggiornare il segnalibro condiviso richiede un'azione esplicita, come nel sito
 Tankarr. Aprire un volume riprende la posizione locale, se presente; altrimenti
 usa il segnalibro del server. Aprirlo dall'elenco Segnalibri usa sempre la pagina
-del segnalibro. Un errore di salvataggio viene mostrato: aggiorna l'elenco per
-verificare lo stato prima di riprovare. Non ci sono scritture automatiche in coda.
+del segnalibro. Le modifiche esplicite vengono prima salvate sul dispositivo:
+se manca la connessione restano in attesa e vengono sincronizzate al ritorno
+online. Un errore di sincronizzazione viene mostrato senza perdere la modifica.
 
 Il gateway deve dichiarare `reading_state_writable: true` e offrire
 `GET /v1/bookmarks`, `PUT/DELETE /v1/series/ID/bookmark`. Le scritture inviano
@@ -132,9 +133,23 @@ toccare nuovamente il tasto in alto o **Ricollega al server** torna alla libreri
 online. Il gesto di aggiornamento in modalità offline aggiorna solo i dati
 locali. Le copie si leggono anche dopo aver chiuso e riaperto
 l'app, in modalità a pagine o continua e con tutte le direzioni disponibili.
-La pagina raggiunta continua a essere salvata localmente. Modificare i segnalibri
-condivisi richiede la connessione e un salvataggio esplicito: non vengono accodate
-scritture offline che potrebbero sovrascrivere quelle di altri dispositivi.
+La pagina raggiunta continua a essere salvata localmente. **Segnalibro** permette
+di salvare, spostare o rimuovere un segnalibro anche offline, dopo che il server
+ha confermato almeno una volta il permesso di modificarli. La modifica viene
+salvata prima sul dispositivo, in un journal atomico separato per account e
+server, e resta visibile come **in attesa di sincronizzazione** fino alla
+conferma del server. Vale anche per le rimozioni: una vecchia fotografia del
+server non fa ricomparire un segnalibro rimosso offline.
+
+Ricollegarsi al server, riaprire l'app online, riportarla in primo piano online
+o aggiornare i segnalibri riprova automaticamente le modifiche pendenti. Un
+errore di rete non le cancella; non ci sono polling periodici. La modalità
+offline scelta esplicitamente resta attiva finché non la si disattiva. Per una
+stessa serie viene inviata l'ultima modifica esplicita fatta su questo dispositivo:
+quando sincronizzata, sostituisce il segnalibro condiviso di quella serie, anche
+se nel frattempo un altro lettore lo ha cambiato. Gli altri segnalibri restano
+invariati. Il cambio pagina da solo continua a non modificare il segnalibro.
+La demo resta interamente locale.
 **Torna alla serie** nel lettore apre la scheda della serie anche arrivando da
 Download o Segnalibri; **Chiudi libro** torna invece alla schermata precedente.
 
@@ -142,12 +157,18 @@ I download sono separati per identità del server e nome utente: LAN e HTTPS del
 stesso server condividono le copie, altri account no. I dati stanno in
 Application Support, protetti dal dispositivo ed esclusi dai backup iCloud;
 nessuna password viene scritta nei manifest. **Disconnetti** chiede conferma e
-rimuove anche le copie dell'account. La cancellazione dei download non modifica
+rimuove anche le copie dell'account e le modifiche ai segnalibri non sincronizzate
+(indicate nella conferma). La cancellazione dei soli download conserva invece
+le modifiche pendenti e non modifica
 i file, i segnalibri o la libreria del server. Le copie sono una fotografia dei
 libri: per aggiornarle dopo una sostituzione sul server, rimuoverle e scaricarle
 nuovamente. La demo permette di provare gli stessi controlli senza credenziali.
 
-Test: `OfflineDownloadsTests` verifica interruzione/ripresa, riapertura senza
+Test: `OfflineBookmarksTests` verifica persistenza delle modifiche e rimozioni,
+conferme ritardate, isolamento degli account, permessi e conservazione durante
+la rimozione dei download. Una prova UI con server HTTP verifica modifica offline,
+chiusura e riapertura, errore 503, sincronizzazione successiva e rimozione offline.
+`OfflineDownloadsTests` verifica interruzione/ripresa, riapertura senza
 rete, spazio insufficiente, integrità, isolamento account, cancellazione e
 risposte tardive. `testOfflineDownloadRelaunchProgressAndRemoval` prova il ciclo
 completo su iPhone e iPad: download, lettura esclusivamente da disco, riavvio,

@@ -91,6 +91,12 @@ struct ReaderView: View {
                     else if let bookmark = model.bookmark(for: book) {
                         Text(L10n.format("Segnalibro a pagina %d", bookmark.pageIndex + 1)).font(.caption).foregroundStyle(.secondary)
                     }
+                    if let series = book.seriesId, model.pendingBookmarkSeries.contains(series) {
+                        Label(L10n.text("Modifica salvata sul dispositivo, in attesa di sincronizzazione"),
+                              systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("bookmark-sync-pending")
+                    }
                     HStack {
                         Button { step(rtl ? 1 : -1) } label: { Image(systemName: axis == .vertical ? "chevron.up" : "chevron.left").frame(width: 44, height: 36) }
                             .disabled(rtl ? page >= book.pageCount - 1 : page <= 0).accessibilityLabel(L10n.text(rtl ? "Pagina successiva" : "Pagina precedente"))
