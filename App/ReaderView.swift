@@ -5,6 +5,25 @@ struct ReaderView: View {
     let bookID: String
     var openingPage: Int? = nil
     var onShowSeries: ((String) -> Void)? = nil
+    @State private var destination: (book: ReaderBook, page: Int)?
+
+    var body: some View {
+        ReaderChapterView(bookID: destination?.book.id ?? bookID,
+            openingPage: destination?.page ?? openingPage, prefetchedBook: destination?.book,
+            onShowSeries: onShowSeries,
+            onOpenChapter: { book, page in destination = (book, page) })
+            // Each chapter gets its own tasks, page image, options and progress.
+            // Old page completions cannot overwrite the new chapter's state.
+            .id(destination?.book.id ?? bookID)
+    }
+}
+
+private struct ReaderChapterView: View {
+    let bookID: String
+    let openingPage: Int?
+    let prefetchedBook: ReaderBook?
+    var onShowSeries: ((String) -> Void)?
+    let onOpenChapter: (ReaderBook, Int) -> Void
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var book: ReaderBook?
@@ -19,6 +38,9 @@ struct ReaderView: View {
     @State private var showOptions = false
     @State private var continuousRequestPage = 0
     @State private var continuousRequestID = 0
+    @State private var chapterLoading = false
+    @State private var boundaryMessage: String?
+    @State private var chapterTask: Task<Void, Never>?
     private var axis: ReaderAxis { book.map { options.resolvedAxis(for: $0) } ?? .horizontal }
     private var rtl: Bool { axis == .horizontal && (book.map { options.resolvedRTL(for: $0) } ?? false) }
     private var continuous: Bool { book.map { options.resolvedContinuous(for: $0) } ?? false }
@@ -37,7 +59,7 @@ struct ReaderView: View {
                             .accessibilityIdentifier("reader-show-series")
                     }
                     Spacer()
-                    VStack { Text(book?.seriesTitle ?? "Tankarr").font(.caption).lineLimit(1); Text(book?.title ?? L10n.text("Caricamento…")).font(.caption2).lineLimit(1) }
+                    VStack { Text(book?.seriesTitle ?? "Tankarr").font(.caption).lineLimit(1); Text(book?.title ?? L10n.text("Caricamento…")).font(.caption2).lineLimit(1).accessibilityIdentifier("reader-book-title") }
                     Spacer()
                     if let book, model.canUseBookmarks, book.seriesId != nil {
                         Menu {
@@ -51,6 +73,8 @@ struct ReaderView: View {
                         } label: {
                             Image(systemName: model.bookmark(for: book) == nil ? "bookmark" : "bookmark.fill")
                         }.accessibilityLabel(L10n.text("Segnalibro"))
+                            .accessibilityIdentifier("reader-bookmark-menu")
+                            .accessibilityHint(L10n.text("Salva o sposta il segnalibro alla pagina aperta."))
                             .disabled(loadedPage == nil || loading || model.bookmarkBusy || model.bookmarksLoading)
                     }
                     Image(systemName: axis == .vertical ? "arrow.down" : (rtl ? "arrow.left" : "arrow.right")).font(.caption)
@@ -66,12 +90,14 @@ struct ReaderView: View {
                         axis: axis, rightToLeft: rtl,
                         requestedPage: continuousRequestPage, requestID: continuousRequestID,
                         loadImage: { index in try await model.page(bookID, at: index) },
-                        onVisiblePage: visiblePageChanged)
+                        onVisiblePage: visiblePageChanged,
+                        onBoundary: { forward in step(forward ? 1 : -1, fromBoundary: true) })
                 } else if let image {
                     ZoomPage(image: image, identity: "\(bookID):\(loadedPage ?? 0)", axis: axis,
-                             rightToLeft: rtl, onStep: step)
+                             rightToLeft: rtl, onStep: { step($0) })
                 }
                 if loading && !continuous { ProgressView().tint(.white).padding(20).background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 12)) }
+                if chapterLoading { ProgressView(L10n.text("Apro il capitolo…")).tint(.white).foregroundStyle(.white).padding(20).background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 12)) }
                 if let error {
                     VStack(spacing: 16) {
                         Image(systemName: "wifi.exclamationmark").font(.largeTitle)
@@ -99,16 +125,19 @@ struct ReaderView: View {
                     }
                     HStack {
                         Button { step(rtl ? 1 : -1) } label: { Image(systemName: axis == .vertical ? "chevron.up" : "chevron.left").frame(width: 44, height: 36) }
-                            .disabled(rtl ? page >= book.pageCount - 1 : page <= 0).accessibilityLabel(L10n.text(rtl ? "Pagina successiva" : "Pagina precedente"))
+                            .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina successiva" : "Pagina precedente"))
                         Spacer()
                         Text("\(page + 1) / \(book.pageCount)").monospacedDigit().font(.callout)
                             .accessibilityIdentifier("reader-page-counter")
                         Spacer()
                         Button { step(rtl ? -1 : 1) } label: { Image(systemName: axis == .vertical ? "chevron.down" : "chevron.right").frame(width: 44, height: 36) }
-                            .disabled(rtl ? page <= 0 : page >= book.pageCount - 1).accessibilityLabel(L10n.text(rtl ? "Pagina precedente" : "Pagina successiva"))
+                            .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina precedente" : "Pagina successiva"))
                     }
                     if book.pageCount > 1 {
                         Slider(value: Binding(get: { Double(page) }, set: { navigate(to: Int($0)) }), in: 0...Double(book.pageCount - 1), step: 1)
+                            .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
+                            .disabled(chapterLoading)
+                            .accessibilityIdentifier("reader-page-slider")
                             .accessibilityLabel(L10n.text("Pagina")).accessibilityValue(L10n.format("%d di %d", page + 1, book.pageCount))
                     }
                 }.padding(.horizontal, 16).padding(.vertical, 8).background(.ultraThinMaterial)
@@ -124,6 +153,11 @@ struct ReaderView: View {
                 continuousRequestPage = page; continuousRequestID += 1
             }
             .sheet(isPresented: $showOptions) { readingOptionsSheet }
+            .onDisappear { chapterTask?.cancel() }
+            .alert(L10n.text("Navigazione capitoli"), isPresented: Binding(
+                get: { boundaryMessage != nil }, set: { if !$0 { boundaryMessage = nil } })) {
+                    Button(L10n.text("OK")) { boundaryMessage = nil }
+                } message: { Text(boundaryMessage ?? "") }
     }
     private var readingOptionsSheet: some View {
         NavigationStack {
@@ -172,7 +206,33 @@ struct ReaderView: View {
             if selected { Image(systemName: "checkmark").accessibilityHidden(true) }
         }.accessibilityAddTraits(selected ? .isSelected : [])
     }
-    private func step(_ delta: Int) { navigate(to: page + delta) }
+    private func step(_ delta: Int, fromBoundary: Bool = false) {
+        guard let book, !chapterLoading, !loading else { return }
+        let forward = delta > 0
+        let currentPage = fromBoundary ? (forward ? book.pageCount - 1 : 0) : page
+        switch ReaderNavigation.step(book: book, page: currentPage, forward: forward,
+            offline: model.offlineMode, downloaded: Set(model.downloads.items.filter(\.complete).map(\.id))) {
+        case .page(let index): navigate(to: index)
+        case .unavailable(let boundary): boundaryMessage = boundary.message
+        case .chapter(let id, let last):
+            chapterLoading = true
+            chapterTask = Task { @MainActor in
+                defer { chapterLoading = false }
+                do {
+                    let next = try await model.book(id)
+                    guard next.id == id, next.pageCount > 0,
+                          book.seriesId == nil || next.seriesId == book.seriesId else { throw ReaderError.unavailable(422) }
+                    try Task.checkCancellation()
+                    onOpenChapter(next, last ? next.pageCount - 1 : 0)
+                } catch {
+                    if !Task.isCancelled {
+                        boundaryMessage = model.offlineMode ?
+                            (forward ? ReaderBoundary.nextNotDownloaded : .previousNotDownloaded).message : error.localizedDescription
+                    }
+                }
+            }
+        }
+    }
     private func navigate(to target: Int) {
         guard let book else { return }
         let target = min(max(0, target), book.pageCount - 1)
@@ -191,7 +251,9 @@ struct ReaderView: View {
     private func loadBook() async {
         guard model.canBrowse else { return }; loading = true; error = nil
         do {
-            let result = try await model.book(bookID)
+            let result: ReaderBook
+            if let prefetchedBook { result = prefetchedBook }
+            else { result = try await model.book(bookID) }
             guard result.pageCount > 0 else { throw ReaderError.unavailable(422) }
             // A downloaded book opens immediately, even if the server has just
             // become unreachable and the last online session is still selected.

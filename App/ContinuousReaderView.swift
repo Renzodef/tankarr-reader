@@ -11,6 +11,7 @@ struct ContinuousReaderView: UIViewControllerRepresentable {
     let requestID: Int
     let loadImage: @MainActor (Int) async throws -> UIImage
     let onVisiblePage: @MainActor (Int, Bool) -> Void
+    let onBoundary: @MainActor (Bool) -> Void
 
     func makeUIViewController(context: Context) -> ContinuousReaderController {
         let controller = ContinuousReaderController()
@@ -21,7 +22,8 @@ struct ContinuousReaderView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: ContinuousReaderController, context: Context) {
         controller.configure(bookID: bookID, pageCount: pageCount, axis: axis, rightToLeft: rightToLeft,
                              requestedPage: requestedPage,
-                             requestID: requestID, loadImage: loadImage, onVisiblePage: onVisiblePage)
+                             requestID: requestID, loadImage: loadImage, onVisiblePage: onVisiblePage,
+                             onBoundary: onBoundary)
     }
 
     static func dismantleUIViewController(_ controller: ContinuousReaderController, coordinator: ()) {
@@ -52,6 +54,7 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
     private var generation = 0
     private var loadImage: (@MainActor (Int) async throws -> UIImage)?
     private var onVisiblePage: (@MainActor (Int, Bool) -> Void)?
+    private var onBoundary: (@MainActor (Bool) -> Void)?
     private var requests: [UUID: Request] = [:]
     private var pendingJump: Int?
     private var anchor: Anchor?
@@ -60,6 +63,7 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
     private var updateScheduled = false
     private var adjustingLayout = false
     private var stopped = false
+    private var dragBoundaries: Set<Bool> = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -84,10 +88,12 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
     func configure(bookID: String, pageCount: Int, axis: ReaderAxis, rightToLeft: Bool,
                    requestedPage: Int, requestID: Int,
                    loadImage: @escaping @MainActor (Int) async throws -> UIImage,
-                   onVisiblePage: @escaping @MainActor (Int, Bool) -> Void) {
+                   onVisiblePage: @escaping @MainActor (Int, Bool) -> Void,
+                   onBoundary: @escaping @MainActor (Bool) -> Void) {
         guard !stopped else { return }
         self.loadImage = loadImage
         self.onVisiblePage = onVisiblePage
+        self.onBoundary = onBoundary
         let changedBook = self.bookID != bookID || self.pageCount != pageCount
         let changedFlow = self.axis != axis || self.rightToLeft != rightToLeft
         let previousAnchor = changedFlow && !changedBook && isViewLoaded ? captureFlowAnchor() : nil
@@ -156,6 +162,7 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
         requests.removeAll()
         loadImage = nil
         onVisiblePage = nil
+        onBoundary = nil
         if isViewLoaded {
             collectionView.visibleCells.compactMap { $0 as? ContinuousPageCell }.forEach { $0.releaseImage() }
             collectionView.delegate = nil
@@ -196,6 +203,30 @@ final class ContinuousReaderController: UIViewController, UICollectionViewDataSo
         guard !adjustingLayout, pendingJump == nil else { return }
         anchor = captureAnchor()
         scheduleVisibleUpdate()
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        defer { dragBoundaries = [] }
+        guard !stopped, !adjustingLayout, pendingJump == nil else { return }
+        // A deliberate pull past the edge changes chapter; momentum or simply
+        // displaying the final page must never turn the chapter by itself.
+        let offset = axis == .vertical ? scrollView.contentOffset.y : scrollView.contentOffset.x
+        let maximum = max(0, axis == .vertical ? scrollView.contentSize.height - scrollView.bounds.height
+                                               : scrollView.contentSize.width - scrollView.bounds.width)
+        guard offset < -70 || offset > maximum + 70 else { return }
+        let forward = axis == .horizontal && rightToLeft ? offset < -70 : offset > maximum + 70
+        guard dragBoundaries.contains(forward) else { return }
+        onBoundary?(forward)
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        dragBoundaries = []
+        let offset = axis == .vertical ? scrollView.contentOffset.y : scrollView.contentOffset.x
+        let maximum = max(0, axis == .vertical ? scrollView.contentSize.height - scrollView.bounds.height
+                                               : scrollView.contentSize.width - scrollView.bounds.width)
+        let reversed = axis == .horizontal && rightToLeft
+        if offset <= 1 { dragBoundaries.insert(reversed) }
+        if offset >= maximum - 1 { dragBoundaries.insert(!reversed) }
     }
 
     private func scheduleVisibleUpdate() {

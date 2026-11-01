@@ -45,7 +45,7 @@ final class ReaderUITests: XCTestCase {
         // on iPad, especially when an earlier test left the book at its last page.
         let previous = app.buttons["Pagina precedente"]
         for _ in 0..<2 {
-            guard previous.isEnabled else { break }
+            guard !app.staticTexts["1 / 3"].exists else { break }
             previous.tap()
             waitForLoadedPage()
         }
@@ -115,6 +115,27 @@ final class ReaderUITests: XCTestCase {
         capture("04-webtoon")
         app.buttons["Pagina successiva"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
+    }
+
+    func testSliderFollowsHorizontalDirectionAndVerticalStartsFromLeft() {
+        app.staticTexts["Segnali dal faro"].firstMatch.tap(); openBook()
+        for (direction, axis) in [("rtl", "horizontal"), ("ltr", "horizontal"), ("rtl", "vertical")] {
+            setReadingOptions(direction: direction, layout: "paged", axis: axis)
+            returnToFirstDemoPage()
+            let slider = app.sliders["reader-page-slider"]
+            let inset = 20 / slider.frame.width // thumb centre, also on wide iPads
+            let firstX = direction == "rtl" && axis == "horizontal" ? 1 - inset : inset
+            let lastX = 1 - firstX
+            let first = slider.coordinate(withNormalizedOffset: CGVector(dx: firstX, dy: 0.5))
+            let last = slider.coordinate(withNormalizedOffset: CGVector(dx: lastX, dy: 0.5))
+            first.press(forDuration: 0.1, thenDragTo: last)
+            XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5))
+            waitForLoadedPage()
+            last.press(forDuration: 0.1, thenDragTo: first)
+            XCTAssertTrue(app.staticTexts["1 / 3"].waitForExistence(timeout: 5))
+            waitForLoadedPage()
+        }
+        setReadingOptions()
     }
 
     func testOfflineDownloadRelaunchProgressAndRemoval() {
@@ -328,6 +349,15 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 3"].waitForExistence(timeout: 5), "Continuous bookmarks use the visible loaded page")
         app.buttons["Segnalibro"].tap()
         app.buttons["Rimuovi segnalibro"].tap()
+
+        // Only a deliberate extra pull at the end opens chapter navigation;
+        // this demo has no next chapter, so the page must remain available.
+        for _ in 0..<3 {
+            if app.alerts["Navigazione capitoli"].exists { break }
+            scroll.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(app.alerts.staticTexts["Non c’è un capitolo successivo."].waitForExistence(timeout: 5))
+        app.alerts.buttons["OK"].tap()
 
         app.buttons["Chiudi libro"].tap()
         openBook()

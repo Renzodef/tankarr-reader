@@ -13,6 +13,7 @@ private final class BackgroundReaderServer: @unchecked Sendable {
     private var sent: [String] = []
     private var savedBookmark: [String: Any]?
     private var rejectWrites = false
+    private var rejectConnections = false
     let pages = 8
     private(set) var port: UInt16 = 0
     private let png: Data
@@ -46,6 +47,10 @@ private final class BackgroundReaderServer: @unchecked Sendable {
         get { lock.lock(); defer { lock.unlock() }; return rejectWrites }
         set { lock.lock(); defer { lock.unlock() }; rejectWrites = newValue }
     }
+    var failConnections: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return rejectConnections }
+        set { lock.lock(); defer { lock.unlock() }; rejectConnections = newValue }
+    }
     func stop() { listener.cancel() }
     private func receive(_ connection: NWConnection, buffered: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 16384) { [weak self] data, _, complete, error in
@@ -64,6 +69,7 @@ private final class BackgroundReaderServer: @unchecked Sendable {
                 guard parts.count >= 2 else { connection.cancel(); return }
                 let method = String(parts[0]), path = String(parts[1])
                 self.lock.lock(); self.received.append((path, Date())); self.lock.unlock()
+                if self.failConnections { connection.cancel(); return }
                 let payload = buffer.subdata(in: separator.upperBound..<(separator.upperBound + length))
                 let (status, body) = self.response(method, path: path, payload: payload)
                 let isPage = path.contains("/pages/")
@@ -107,8 +113,11 @@ private final class BackgroundReaderServer: @unchecked Sendable {
             value = ["books": (1...2).map { n in ["id": "bg-book-\(n)", "label": "Capitolo \(n)", "title": "Fixture \(n)",
                 "volume": "", "chapter": String(n), "unit": "chapter", "language": "it"] }]
         case "/v1/books/bg-book-1", "/v1/books/bg-book-2":
+            let first = path.hasSuffix("-1")
             value = ["id": path.components(separatedBy: "/").last!, "series_id": "background-series",
-                "series_title": "Background download fixture", "title": "Fixture", "page_count": pages, "direction": "ltr", "mode": "paged"]
+                "series_title": "Background download fixture", "title": first ? "Fixture 1" : "Fixture 2",
+                "page_count": pages, "direction": "ltr", "mode": "paged",
+                "previous_id": first ? NSNull() : "bg-book-1", "next_id": first ? "bg-book-2" : NSNull()]
         default: value = ["items": []]
         }
         return ("200 OK", try! JSONSerialization.data(withJSONObject: value))
@@ -131,7 +140,8 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.staticTexts["Background download fixture"].firstMatch.tap()
         app.buttons["series-downloads"].tap()
         app.buttons["download-series"].tap()
-        XCTAssertTrue(app.buttons["pause-download-bg-book-1"].waitForExistence(timeout: 15))
+        waitUntil({ self.app.buttons["pause-download-bg-book-1"].exists ||
+                    self.app.buttons["remove-download-bg-book-1"].exists }, seconds: 15)
         app.navigationBars.buttons.firstMatch.tap()
         app.buttons["downloads"].tap()
     }
@@ -142,6 +152,81 @@ final class BackgroundDownloadUITests: XCTestCase {
     private func assertComplete() {
         XCTAssertTrue(app.buttons["remove-download-bg-book-1"].waitForExistence(timeout: 120))
         XCTAssertTrue(app.buttons["remove-download-bg-book-2"].waitForExistence(timeout: 120))
+    }
+    private func readyPage(_ counter: String) {
+        XCTAssertTrue(app.staticTexts[counter].waitForExistence(timeout: 15))
+        waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 15)
+    }
+    private func lastPage() {
+        app.sliders["reader-page-slider"].adjust(toNormalizedSliderPosition: 1)
+        for _ in 0..<2 {
+            if app.staticTexts["8 / 8"].exists { break }
+            waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 15)
+            app.buttons["Pagina successiva"].tap()
+        }
+        readyPage("8 / 8")
+    }
+
+    func testChapterBoundariesAndSeriesBookmarkRespectOfflineAvailability() {
+        server.delay = 0.1
+        app.staticTexts["Background download fixture"].firstMatch.tap()
+        app.staticTexts["Capitolo 1"].tap(); readyPage("1 / 8")
+        lastPage()
+        app.buttons["Pagina successiva"].tap(); readyPage("1 / 8")
+        XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 2")
+        app.buttons["Segnalibro"].tap(); app.buttons["Salva segnalibro"].tap()
+        XCTAssertTrue(app.staticTexts["Segnalibro a pagina 1"].waitForExistence(timeout: 10))
+        app.buttons["Pagina precedente"].tap(); readyPage("8 / 8")
+        XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 1")
+        app.buttons["Torna alla serie"].tap()
+        XCTAssertTrue(app.buttons["series-resume-bookmark"].waitForExistence(timeout: 10))
+        app.buttons["series-resume-bookmark"].tap(); readyPage("1 / 8")
+        app.buttons["Pagina successiva"].tap(); readyPage("2 / 8")
+        app.buttons["Chiudi libro"].tap()
+        app.buttons["series-resume-bookmark"].tap(); readyPage("1 / 8")
+        app.buttons["Chiudi libro"].tap()
+
+        app.buttons["download-bg-book-1"].tap()
+        XCTAssertTrue(app.buttons["remove-download-bg-book-1"].waitForExistence(timeout: 45))
+        app.navigationBars.buttons.firstMatch.tap(); app.buttons["offline-mode"].tap()
+        app.staticTexts["Background download fixture"].firstMatch.tap()
+        let requests = server.requests.count
+        app.buttons["series-resume-bookmark"].tap()
+        XCTAssertTrue(app.alerts["Segnalibro non disponibile offline"].waitForExistence(timeout: 5))
+        app.alerts.buttons["OK"].tap()
+        app.staticTexts["Capitolo 1"].tap(); readyPage("8 / 8")
+        app.buttons["Pagina successiva"].tap()
+        XCTAssertTrue(app.alerts.staticTexts["Il capitolo successivo non è scaricato. Torna online per leggerlo."].waitForExistence(timeout: 5))
+        app.alerts.buttons["OK"].tap()
+        XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 1")
+        XCTAssertEqual(server.requests.count, requests, "Offline boundary/resume must not fetch missing chapters")
+    }
+
+    func testDownloadedNeighboursAndAutomaticOfflineRecovery() {
+        server.delay = 1
+        queueBooks(); assertComplete(); app.buttons["Chiudi"].tap()
+        server.failConnections = true
+        // A real socket failure switches to cached library/chapters, without
+        // changing the user's explicit offline preference.
+        app.staticTexts["Background download fixture"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Capitolo 1"].waitForExistence(timeout: 30))
+        app.staticTexts["Capitolo 1"].tap(); readyPage("1 / 8"); lastPage()
+        app.images["reader-page"].firstMatch.swipeLeft(); readyPage("1 / 8")
+        XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 2")
+        app.images["reader-page"].firstMatch.swipeRight(); readyPage("8 / 8")
+        XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 1")
+        app.buttons["Chiudi libro"].tap(); app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Offline automatico"].waitForExistence(timeout: 10))
+        server.failConnections = false
+        XCUIDevice.shared.press(.home); app.activate()
+        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 20))
+        // Manual Offline remains selected even with working network and a new foreground.
+        app.buttons["offline-mode"].tap()
+        XCTAssertTrue(app.staticTexts["Lettura offline"].waitForExistence(timeout: 10))
+        XCUIDevice.shared.press(.home); app.activate()
+        XCTAssertTrue(app.staticTexts["Lettura offline"].waitForExistence(timeout: 10))
+        app.buttons["return-online"].tap()
+        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 20))
     }
 
     func testDownloadsContinueWhileReaderIsInBackground() {

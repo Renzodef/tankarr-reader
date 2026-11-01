@@ -62,6 +62,21 @@ public enum L10n {
     // Keys are the original Italian UI copy. Library metadata, artwork and story text
     // never pass through this catalog: changing the UI does not translate a book.
     static let english: [String: String] = [
+        "Non c’è un capitolo precedente.": "There is no previous chapter.",
+        "Non c’è un capitolo successivo.": "There is no next chapter.",
+        "Il capitolo precedente non è scaricato. Torna online per leggerlo.": "The previous chapter is not downloaded. Go online to read it.",
+        "Il capitolo successivo non è scaricato. Torna online per leggerlo.": "The next chapter is not downloaded. Go online to read it.",
+        "Salva o sposta il segnalibro alla pagina aperta.": "Save or move the bookmark to the open page.",
+        "Apro il capitolo…": "Opening chapter…",
+        "Navigazione capitoli": "Chapter navigation",
+        "OK": "OK",
+        "Riprendi dal segnalibro": "Resume from bookmark",
+        "Apri un capitolo e tocca l’icona Segnalibro in alto, poi Salva segnalibro.": "Open a chapter, tap the Bookmark icon at the top, then Save bookmark.",
+        "Segnalibro non disponibile offline": "Bookmark unavailable offline",
+        "Il capitolo del segnalibro non è scaricato. Torna online per leggerlo.": "The bookmarked chapter is not downloaded. Go online to read it.",
+        "Torna online": "Go online",
+        "Offline automatico": "Automatically offline",
+        "Il pulsante con il Wi-Fi barrato mostra solo i download. Se manca la rete, l’app passa automaticamente alle copie scaricate e riprova al ritorno della rete o alla riapertura. Se attivi Offline tu, resta attivo finché tocchi Torna online.": "The crossed-out Wi-Fi button shows downloads only. If the network is unavailable, the app switches to downloaded copies and retries when the network returns or the app reopens. If you turn Offline on yourself, it stays on until you tap Go online.",
         "Una copia dei segnalibri, le modifiche in attesa di sincronizzazione e le copertine dei download restano nell’archivio privato, separate per server e account. Le modifiche ai segnalibri vengono inviate quando torni online; fino alla conferma del server restano sul dispositivo.": "Cached bookmarks, pending changes and download covers stay in private storage, separated by server and account. Bookmark changes are sent when you go back online and stay on this device until the server confirms them.",
         "Disconnetti elimina il profilo, la password, i download e le modifiche ai segnalibri non sincronizzate dell’account corrente. Rimuovere soltanto i download conserva le modifiche pendenti. I progressi di lettura locali si cancellano separatamente. Per rimuovere un segnalibro condiviso usa l’elenco Segnalibri o il menu del lettore.": "Disconnect removes the current account’s profile, password, downloads and unsynced bookmark changes. Removing only downloads keeps pending changes. Local reading progress is cleared separately. To remove a shared bookmark, use the Bookmarks list or the reader menu.",
         "Modalità offline": "Offline mode",
