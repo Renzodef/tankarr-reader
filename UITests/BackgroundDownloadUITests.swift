@@ -153,13 +153,22 @@ final class BackgroundDownloadUITests: XCTestCase {
         XCTAssertTrue(app.buttons["remove-download-bg-book-1"].waitForExistence(timeout: 120))
         XCTAssertTrue(app.buttons["remove-download-bg-book-2"].waitForExistence(timeout: 120))
     }
+    private func backgroundReader() {
+        XCUIDevice.shared.press(.home)
+        // Home can leave an iPad window foregrounded. Activate another app
+        // so these tests prove a real background/foreground transition.
+        XCUIApplication(bundleIdentifier: "com.apple.Preferences").activate()
+        waitUntil({ self.app.state != .runningForeground }, seconds: 15)
+    }
     private func readyPage(_ counter: String) {
         XCTAssertTrue(app.staticTexts[counter].waitForExistence(timeout: 15))
         waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 15)
     }
     private func lastPage() {
-        app.sliders["reader-page-slider"].adjust(toNormalizedSliderPosition: 1)
-        for _ in 0..<2 {
+        // Chapter navigation is tested independently of XCTest's normalized
+        // slider gesture, which is not reliable on the wide iPad slider.
+        // Physical slider direction has its own drag test on both devices.
+        for _ in 0..<7 {
             if app.staticTexts["8 / 8"].exists { break }
             waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 15)
             app.buttons["Pagina successiva"].tap()
@@ -178,6 +187,9 @@ final class BackgroundDownloadUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 1"].waitForExistence(timeout: 10))
         app.buttons["Pagina precedente"].tap(); readyPage("8 / 8")
         XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 1")
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.lifetime = .keepAlways; add(screenshot)
+        XCTAssertTrue(app.buttons["Torna alla serie"].isHittable, app.debugDescription)
         app.buttons["Torna alla serie"].tap()
         XCTAssertTrue(app.buttons["series-resume-bookmark"].waitForExistence(timeout: 10))
         app.buttons["series-resume-bookmark"].tap(); readyPage("1 / 8")
@@ -218,12 +230,15 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.buttons["Chiudi libro"].tap(); app.navigationBars.buttons.firstMatch.tap()
         XCTAssertTrue(app.staticTexts["Offline automatico"].waitForExistence(timeout: 10))
         server.failConnections = false
-        XCUIDevice.shared.press(.home); app.activate()
-        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 20))
+        backgroundReader()
+        app.activate()
+        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 20),
+            "Requests: \(server.requests.map(\.0))")
         // Manual Offline remains selected even with working network and a new foreground.
         app.buttons["offline-mode"].tap()
         XCTAssertTrue(app.staticTexts["Lettura offline"].waitForExistence(timeout: 10))
-        XCUIDevice.shared.press(.home); app.activate()
+        backgroundReader()
+        app.activate()
         XCTAssertTrue(app.staticTexts["Lettura offline"].waitForExistence(timeout: 10))
         app.buttons["return-online"].tap()
         XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 20))
@@ -231,8 +246,7 @@ final class BackgroundDownloadUITests: XCTestCase {
 
     func testDownloadsContinueWhileReaderIsInBackground() {
         queueBooks()
-        XCUIDevice.shared.press(.home)
-        waitUntil({ self.app.state != .runningForeground }, seconds: 15)
+        backgroundReader()
         let backgrounded = Date()
         waitUntil({ Set(self.server.delivered).count == self.server.pages * 2 })
         XCTAssertNotEqual(app.state, .runningForeground)
