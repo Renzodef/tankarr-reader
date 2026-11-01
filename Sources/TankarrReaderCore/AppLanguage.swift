@@ -62,13 +62,20 @@ public enum L10n {
     // Keys are the original Italian UI copy. Library metadata, artwork and story text
     // never pass through this catalog: changing the UI does not translate a book.
     static let english: [String: String] = [
+        "Una copia dei segnalibri, le modifiche in attesa di sincronizzazione e le copertine dei download restano nell’archivio privato, separate per server e account. Le modifiche ai segnalibri vengono inviate quando torni online; fino alla conferma del server restano sul dispositivo.": "Cached bookmarks, pending changes and download covers stay in private storage, separated by server and account. Bookmark changes are sent when you go back online and stay on this device until the server confirms them.",
+        "Disconnetti elimina il profilo, la password, i download e le modifiche ai segnalibri non sincronizzate dell’account corrente. Rimuovere soltanto i download conserva le modifiche pendenti. I progressi di lettura locali si cancellano separatamente. Per rimuovere un segnalibro condiviso usa l’elenco Segnalibri o il menu del lettore.": "Disconnect removes the current account’s profile, password, downloads and unsynced bookmark changes. Removing only downloads keeps pending changes. Local reading progress is cleared separately. To remove a shared bookmark, use the Bookmarks list or the reader menu.",
         "Modalità offline": "Offline mode",
         "Annulla": "Cancel",
         "Attiva": "On",
         "Disattiva": "Off",
         "%d file scaricati": "%d downloaded files",
         "Disattiva Offline per scegliere i libri da scaricare.": "Turn Offline off to choose books to download.",
-        "Segnalibri salvati delle serie scaricate. Per modificarli o aggiornarli, ricollegati al server.": "Saved bookmarks for downloaded series. Reconnect to the server to edit or refresh them.",
+        "Segnalibri delle serie scaricate. Le modifiche restano sul dispositivo e si sincronizzano quando torni online.": "Bookmarks for downloaded series. Changes stay on this device and sync when you go back online.",
+        "%d modifiche in attesa di sincronizzazione": "%d changes waiting to sync",
+        "Modifica salvata sul dispositivo, in attesa di sincronizzazione": "Change saved on this device, waiting to sync",
+        "Modifiche salvate sul dispositivo. Sincronizzazione non riuscita: %@": "Changes saved on this device. Sync failed: %@",
+        "Impossibile salvare il segnalibro sul dispositivo. %@": "Unable to save the bookmark on this device. %@",
+        "Le modifiche ai segnalibri non ancora sincronizzate saranno eliminate dal dispositivo. I segnalibri sul server restano invariati.": "Unsynced bookmark changes will be removed from this device. Server bookmarks remain unchanged.",
         "Il capitolo del segnalibro non è scaricato. Apri la serie per leggere le copie disponibili.": "The bookmarked chapter is not downloaded. Open the series to read the available copies.",
         "Impossibile salvare i segnalibri per l’uso offline. %@": "Unable to save bookmarks for offline use. %@",
         "Impossibile leggere i segnalibri offline. %@": "Unable to read offline bookmarks. %@",
