@@ -4,7 +4,8 @@ import UIKit
 
 @main
 struct TankarrReaderApp: App {
-    @StateObject private var model = AppModel()
+    @UIApplicationDelegateAdaptor(ReaderAppDelegate.self) private var appDelegate
+    @StateObject private var model = AppModel.shared
     @Environment(\.scenePhase) private var scenePhase
     var body: some Scene {
         WindowGroup {
@@ -12,8 +13,20 @@ struct TankarrReaderApp: App {
                 .environment(\.locale, model.languageLocale)
                 .task { await model.restore() }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active { model.refreshSystemLanguage() }
+                    if phase == .active {
+                        model.refreshSystemLanguage()
+                        Task { await model.resumeBackgroundDownloads() }
+                    }
                 }
+        }
+    }
+}
+
+final class ReaderAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        Task { @MainActor in
+            await AppModel.shared.restoreBackgroundDownloads(identifier: identifier, completion: completionHandler)
         }
     }
 }
@@ -33,7 +46,7 @@ enum PasswordStore {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service, kSecAttrAccount as String: "reader"]
         let attributes: [String: Any] = [kSecValueData as String: Data(password.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
         var result = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if result == errSecItemNotFound {
             result = SecItemAdd(query.merging(attributes) { _, new in new } as CFDictionary, nil)
@@ -48,6 +61,7 @@ enum PasswordStore {
 
 @MainActor
 final class AppModel: ObservableObject {
+    static let shared = AppModel()
     @Published var profile = ServerProfile()
     @Published var api: ReaderAPI?
     @Published var library: [LibrarySeries] = []
@@ -107,6 +121,16 @@ final class AppModel: ObservableObject {
     }
     func restore() async {
         guard !restored else { return }; restored = true
+        #if DEBUG
+        if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--background-download-test"),
+           ProcessInfo.processInfo.arguments.indices.contains(index + 1) {
+            let address = ProcessInfo.processInfo.arguments[index + 1]
+            if let url = try? Endpoint.validate(address), url.host == "127.0.0.1" {
+                await connect(ServerProfile(localAddress: address, username: "test-reader", mode: .local), password: "test-only")
+                return
+            }
+        }
+        #endif
         if UserDefaults.standard.bool(forKey: "demoMode") || ProcessInfo.processInfo.arguments.contains("--demo") {
             let resumeOffline = UserDefaults.standard.bool(forKey: "offlineReading")
                 && !ProcessInfo.processInfo.arguments.contains("--demo")
@@ -123,8 +147,28 @@ final class AppModel: ObservableObject {
         if UserDefaults.standard.bool(forKey: "offlineReading"), downloads.account != nil {
             await useOffline(); return
         }
-        if let password = PasswordStore.read() { await connect(profile, password: password) }
+        if let password = PasswordStore.read() {
+            // Upgrade the existing keychain item's accessibility on an unlocked
+            // foreground launch, so page batches can continue with a locked screen.
+            try? PasswordStore.save(password)
+            await restoreBackgroundDownloads()
+            await connect(profile, password: password)
+        }
         else { showConnection = true }
+    }
+    func restoreBackgroundDownloads(identifier: String? = nil, completion: (() -> Void)? = nil) async {
+        guard !UserDefaults.standard.bool(forKey: "offlineReading"),
+              let account = offlineAccount(profile),
+              identifier == nil || identifier == BackgroundDownloads.prefix + account.key,
+              let baseText = UserDefaults.standard.string(forKey: "downloadEndpoint"),
+              let base = try? Endpoint.validate(baseText), (try? profile.candidates().contains(base)) == true,
+              let password = PasswordStore.read() else { completion?(); return }
+        await downloads.activate(account)
+        await downloads.configureBackground(api: ReaderAPI(base: base, username: profile.username, password: password), completion: completion)
+    }
+    func resumeBackgroundDownloads() async {
+        guard !offlineMode, !isDemo else { return }
+        if let api { await downloads.configureBackground(api: api); await downloads.reload() }
     }
     func connect(_ newProfile: ServerProfile, password: String) async {
         guard !busy else { return }; busy = true; connectionError = nil
@@ -136,7 +180,9 @@ final class AppModel: ObservableObject {
             var accepted = newProfile; accepted.instanceID = status.instanceId
             let stored = try JSONEncoder().encode(accepted)
             UserDefaults.standard.set(stored, forKey: "serverProfile")
+            UserDefaults.standard.set(client.base.absoluteString, forKey: "downloadEndpoint")
             await downloads.activate(offlineAccount(accepted))
+            await downloads.configureBackground(api: client)
             profile = accepted; api = client; isDemo = false; offlineMode = false; library = result.items; covers.removeAllObjects()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
             await restoreCachedBookmarks()
@@ -174,6 +220,7 @@ final class AppModel: ObservableObject {
         PasswordStore.remove(); UserDefaults.standard.removeObject(forKey: "serverProfile")
         UserDefaults.standard.removeObject(forKey: "demoMode")
         UserDefaults.standard.removeObject(forKey: "offlineReading")
+        UserDefaults.standard.removeObject(forKey: "downloadEndpoint")
         api = nil; isDemo = false; offlineMode = false; library = []; covers.removeAllObjects(); profile = ServerProfile()
         resetBookmarkSession(); readingStateWritable = false
         endpointHost = nil; connectionError = nil; showConnection = true
@@ -187,7 +234,7 @@ final class AppModel: ObservableObject {
     }
     func useOffline() async {
         if !offlineMode { await cacheBookmarks() }
-        await downloads.pauseAll()
+        await downloads.pauseAll(preserveQueue: true)
         api = nil; offlineMode = true; library = downloadedSeries; covers.removeAllObjects()
         sessionID = UUID(); bookmarksLoading = false
         readingStateWritable = false; connectionError = nil; showConnection = false

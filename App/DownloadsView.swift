@@ -48,9 +48,12 @@ struct DownloadsView: View {
                 Section {
                     Text(L10n.format("Spazio usato: %@", ByteCountFormatter.string(fromByteCount: downloads.totalBytes, countStyle: .file)))
                         .accessibilityIdentifier("download-storage")
-                    Text(L10n.text("Scarica capitoli o volumi con l’app aperta. Puoi metterli in pausa e riprendere le pagine mancanti. Le copie complete si leggono anche senza rete."))
+                    Text(L10n.text("I download continuano quando cambi app o blocchi lo schermo. La coda viene salvata: dopo una chiusura forzata riprende alla riapertura dalle pagine mancanti. iOS decide i tempi in background."))
                         .font(.footnote).foregroundStyle(.secondary)
                     if !downloads.queuedIDs.isEmpty { Text(L10n.format("%d download in coda", downloads.queuedIDs.count)) }
+                    if downloads.backgroundPaused && model.canDownload {
+                        Button(L10n.text("Riprendi la coda")) { Task { await model.resumeBackgroundDownloads() } }
+                    }
                     if model.offlineMode {
                         Label(L10n.text("Lettura offline"), systemImage: "wifi.slash")
                         Button(L10n.text("Ricollega al server")) { Task { await model.reconnect() } }.disabled(model.busy)
@@ -76,9 +79,11 @@ struct DownloadsView: View {
                                     Label(L10n.text("Disponibile offline"), systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
                                 } else {
                                     ProgressView(value: Double(item.downloadedPages), total: Double(item.book.pageCount))
+                                        .accessibilityIdentifier("download-progress-\(item.id)")
+                                        .accessibilityValue(String(item.downloadedPages))
                                     Text(L10n.format("%d di %d pagine scaricate", item.downloadedPages, item.book.pageCount))
                                         .font(.caption).foregroundStyle(.secondary)
-                                    if downloads.activeID != item.id { Text(L10n.text("In pausa · Riprendi per completare")).font(.caption) }
+                                    if !downloads.isQueued(item.id) { Text(L10n.text("In pausa · Riprendi per completare")).font(.caption) }
                                 }
                                 Text(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
                             }

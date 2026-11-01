@@ -71,7 +71,9 @@ public actor OfflineStore {
         var attributes = URLResourceValues(); attributes.isExcludedFromBackup = true
         try privateURL.setResourceValues(attributes)
         #if os(iOS)
-        try fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: url.path)
+        // Background URLSession callbacks must commit while the screen is locked.
+        // Still encrypted, device-local, and inaccessible before the first unlock.
+        try fm.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: url.path)
         #endif
     }
     private func accountURL(_ account: OfflineAccount) throws -> URL {
@@ -85,7 +87,7 @@ public actor OfflineStore {
     }
     private func write(_ data: Data, to url: URL) throws {
         #if os(iOS)
-        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         #else
         try data.write(to: url, options: .atomic)
         #endif
@@ -134,6 +136,20 @@ public actor OfflineStore {
         try directory(folder)
         return folder.appendingPathComponent(name)
     }
+    public func backgroundQueue(account: OfflineAccount) throws -> BackgroundDownloadQueue {
+        let file = try metadataURL("background-queue.json", account: account)
+        guard fm.fileExists(atPath: file.path) else { return BackgroundDownloadQueue(account: account) }
+        guard try regularSize(file) <= 32 * 1024 * 1024 else { throw OfflineError.invalidStorage }
+        let queue = try JSONDecoder().decode(BackgroundDownloadQueue.self, from: Data(contentsOf: file))
+        try queue.validate(for: account)
+        return queue
+    }
+    public func saveBackgroundQueue(_ queue: BackgroundDownloadQueue, account: OfflineAccount) throws {
+        try queue.validate(for: account)
+        let data = try JSONEncoder().encode(queue)
+        guard data.count <= 32 * 1024 * 1024 else { throw OfflineError.invalidStorage }
+        try write(data, to: metadataURL("background-queue.json", account: account))
+    }
     public func saveBookmarks(_ bookmarks: [ReaderBookmark], account: OfflineAccount) throws {
         let data = try JSONEncoder().encode(bookmarks)
         guard data.count <= 8 * 1024 * 1024 else { throw OfflineError.invalidStorage }
@@ -170,7 +186,7 @@ public actor OfflineStore {
         guard bytes >= 0, try freeBytes(root) >= reserve + Int64(bytes) * 2 else { throw OfflineError.lowSpace }
     }
     public func begin(book: ReaderBook, series: LibrarySeries, listing: LibraryBook,
-                      account: OfflineAccount) throws -> OfflineDownload {
+                      account: OfflineAccount, generation: UUID = UUID()) throws -> OfflineDownload {
         try Task.checkCancellation()
         guard book.id == listing.id, book.seriesId == series.id, (1...20_000).contains(book.pageCount) else {
             throw ReaderError.invalidIdentifier
@@ -181,7 +197,7 @@ public actor OfflineStore {
         }
         try checkSpace(for: 64 * 1024)
         try directory(bookURL(book.id, account: account))
-        let record = OfflineDownload(schema: 1, account: account.key, generation: UUID(), book: book,
+        let record = OfflineDownload(schema: 1, account: account.key, generation: generation, book: book,
             series: series, listing: listing, pages: old?.pages ?? [:], complete: false, createdAt: old?.createdAt ?? Date())
         try persist(record, account: account)
         return record

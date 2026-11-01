@@ -216,6 +216,13 @@ public final class ReaderAPI: @unchecked Sendable {
         let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
         return try decoder.decode(T.self, from: await data(path, timeout: timeout))
     }
+    public func backgroundRequest(book: String, page: Int?) throws -> URLRequest {
+        if let page, page < 0 { throw ReaderError.invalidIdentifier }
+        let path = "/v1/books/\(try Endpoint.identifier(book))" + (page.map { "/pages/\($0)" } ?? "")
+        var request = try Endpoint.request(base: base, path: path, username: username, password: password, timeout: 120)
+        request.httpShouldHandleCookies = false
+        return request
+    }
     /// Download one page to a temporary file first; never buffer a whole volume.
     /// The same authenticated session refuses redirects and verifies TLS.
     public func downloadPage(book: String, index: Int) async throws -> Data {
