@@ -508,7 +508,7 @@ struct ConnectionView: View {
                         guard size <= ReaderConfiguration.maximumBytes else { throw ReaderError.invalidAccount }
                         let imported = try ImportedReaderConfiguration(data: Data(contentsOf: url, options: [.mappedIfSafe]))
                         let value = imported.configuration
-                        password = imported.password ?? (value.matchesAccount(model.profile) ? PasswordStore.read() ?? "" : "")
+                        password = imported.password ?? (value.canReusePassword(from: model.profile) ? PasswordStore.read() ?? "" : "")
                         profile = value.profile; importedConfiguration = imported; importError = nil
                     } catch { importError = L10n.format("Configurazione non valida: %@", error.localizedDescription) }
                 }

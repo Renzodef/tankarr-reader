@@ -42,6 +42,25 @@ final class ReaderConfigurationTests: XCTestCase {
         XCTAssertFalse(ReaderConfiguration(profile: other).matchesAccount(other))
     }
 
+    func testImportedIdentityCannotAutofillPasswordToAnUnconfiguredEndpoint() {
+        let own = ReaderConfiguration(profile: profile)
+        XCTAssertTrue(own.canReusePassword(from: profile))
+        var untrusted = profile; untrusted.remoteAddress = "https://unconfigured.example.org"
+        let claimed = ReaderConfiguration(profile: untrusted)
+        XCTAssertTrue(claimed.matchesAccount(profile), "A file can copy the public identity fields")
+        XCTAssertFalse(claimed.canReusePassword(from: profile))
+        untrusted = profile
+        untrusted.localAddress = "http://unconfigured.local:8789"
+        XCTAssertFalse(ReaderConfiguration(profile: untrusted).canReusePassword(from: profile),
+                       "An unused new address must not receive the password after a mode switch")
+        untrusted.mode = .automatic
+        XCTAssertFalse(ReaderConfiguration(profile: untrusted).canReusePassword(from: profile))
+        untrusted = profile; untrusted.remoteAddress += "/different-reader"
+        XCTAssertFalse(ReaderConfiguration(profile: untrusted).canReusePassword(from: profile))
+        untrusted = profile; untrusted.username = "another-reader"
+        XCTAssertFalse(ReaderConfiguration(profile: untrusted).canReusePassword(from: profile))
+    }
+
     func testRejectsUnknownFormatVersionOversizeAndUnsafeResourceIDs() throws {
         let valid = try ReaderConfiguration(profile: profile).encoded()
         for (from, to) in [("tankarr-reader", "other-app"), ("\"version\" : 1", "\"version\" : 2")] {
