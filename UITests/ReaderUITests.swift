@@ -8,13 +8,7 @@ final class ReaderUITests: XCTestCase {
         app.launchArguments = ["--demo", "-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.waitForExistence(timeout: 15))
-        // A failed language-test run may have left an explicit override behind.
-        if app.staticTexts["Read-only library"].exists {
-            app.buttons["connection-settings"].tap()
-            app.buttons["app-language"].tap()
-            app.buttons["Italiano"].tap()
-            app.buttons["Chiudi"].tap()
-        }
+
     }
 
     private func capture(_ name: String) {
@@ -35,7 +29,7 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
         // The page counter changes before decoding and local progress saving finish.
         let ready = NSPredicate(format: "exists == true AND isEnabled == true")
-        expectation(for: ready, evaluatedWith: app.buttons["Segnalibro"])
+        expectation(for: ready, evaluatedWith: app.buttons["Bookmark"])
         waitForExpectations(timeout: 10)
     }
 
@@ -43,7 +37,7 @@ final class ReaderUITests: XCTestCase {
         waitForLoadedPage()
         // Use discrete controls: a normalized slider drag can miss its endpoint
         // on iPad, especially when an earlier test left the book at its last page.
-        let previous = app.buttons["Pagina precedente"]
+        let previous = app.buttons["Previous page"]
         for _ in 0..<2 {
             guard !app.staticTexts["1 / 3"].exists else { break }
             previous.tap()
@@ -70,36 +64,36 @@ final class ReaderUITests: XCTestCase {
     }
 
     private func setReadingOptions(direction: String = "automatic", layout: String = "automatic", axis: String = "automatic") {
-        app.buttons["Opzioni di lettura"].tap()
+        app.buttons["Reading options"].tap()
         // A vertical flow intentionally disables the horizontal direction controls.
         tapOption("reader-axis-horizontal")
         tapOption("reader-direction-\(direction)")
         tapOption("reader-layout-\(layout)")
         tapOption("reader-axis-\(axis)")
-        app.buttons["Fine"].tap()
+        app.buttons["Done"].tap()
         waitForLoadedPage()
     }
 
     func testDemoReadingProgressAndScreenshots() {
-        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].exists)
-        XCTAssertTrue(app.staticTexts["Demo sul dispositivo"].exists)
+        XCTAssertTrue(app.staticTexts["Read-only library"].exists)
+        XCTAssertTrue(app.staticTexts["On-device demo"].exists)
         capture("01-library")
 
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Disponibili da leggere"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Available to read"].waitForExistence(timeout: 10))
         capture("02-books")
         openBook()
         setReadingOptions()
         // Also make re-runs deterministic without modifying stored files directly.
         returnToFirstDemoPage()
         capture("03-reader")
-        app.buttons["Pagina successiva"].tap()
+        app.buttons["Next page"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
         waitForLoadedPage()
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         openBook()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5), "Reading position survives closing the book")
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         app.navigationBars.buttons.firstMatch.tap()
 
         let search = app.searchFields.firstMatch
@@ -113,7 +107,7 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.collectionViews["reader-continuous"].exists, "Webtoon defaults to continuous scrolling")
         returnToFirstDemoPage()
         capture("04-webtoon")
-        app.buttons["Pagina successiva"].tap()
+        app.buttons["Next page"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
     }
 
@@ -121,9 +115,9 @@ final class ReaderUITests: XCTestCase {
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
         let button = app.buttons["series-follow"]
         XCTAssertTrue(button.waitForExistence(timeout: 10))
-        if button.value as? String == "Attiva" { button.tap() }
+        if button.value as? String == "On" { button.tap() }
         button.tap()
-        XCTAssertEqual(button.value as? String, "Attiva")
+        XCTAssertEqual(button.value as? String, "On")
         app.terminate(); app.launch()
         let filter = app.buttons["followed-series-filter"]
         XCTAssertTrue(filter.waitForExistence(timeout: 10))
@@ -133,9 +127,9 @@ final class ReaderUITests: XCTestCase {
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
         let followed = app.buttons["series-follow"]
         XCTAssertTrue(followed.waitForExistence(timeout: 10))
-        XCTAssertEqual(followed.value as? String, "Attiva")
+        XCTAssertEqual(followed.value as? String, "On")
         followed.tap()
-        XCTAssertEqual(followed.value as? String, "Disattiva")
+        XCTAssertEqual(followed.value as? String, "Off")
     }
 
     func testSliderFollowsHorizontalDirectionAndVerticalStartsFromLeft() {
@@ -170,51 +164,51 @@ final class ReaderUITests: XCTestCase {
         if app.buttons["remove-all-downloads"].exists {
             app.buttons["remove-all-downloads"].tap()
             app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
-            XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["No downloads"].waitForExistence(timeout: 10))
         }
-        app.buttons["Chiudi"].tap()
+        app.buttons["Close"].tap()
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
         openBook()
         setReadingOptions(direction: "ltr", layout: "paged", axis: "horizontal")
         returnToFirstDemoPage()
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         app.buttons["download-\(id)"].tap()
         XCTAssertTrue(app.buttons["remove-download-\(id)"].waitForExistence(timeout: 30))
         app.navigationBars.buttons.firstMatch.tap()
         app.buttons["downloads"].tap()
-        XCTAssertTrue(app.staticTexts["Disponibile offline"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Available offline"].waitForExistence(timeout: 10))
         app.buttons["use-offline"].tap()
-        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Offline reading"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["offline-book-\(id)"].tap()
         XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Segnalibro"].exists, "Demo bookmarks can also be changed offline and stay local")
-        app.buttons["Pagina successiva"].tap()
+        XCTAssertTrue(app.buttons["Bookmark"].exists, "Demo bookmarks can also be changed offline and stay local")
+        app.buttons["Next page"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 10))
         // Closing waits for the local page save before checking a cold launch.
         sleep(1)
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         app.terminate()
         // This debug-only mode disables generated demo pages: reads must come from disk.
         app.launchArguments += ["--offline-demo"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Offline reading"].firstMatch.waitForExistence(timeout: 15))
         app.buttons["downloads"].tap()
         app.buttons["offline-book-\(id)"].tap()
         XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 10))
-        app.buttons["Opzioni di lettura"].tap()
+        app.buttons["Reading options"].tap()
         tapOption("reader-layout-continuous")
         tapOption("reader-axis-vertical")
-        app.buttons["Fine"].tap()
+        app.buttons["Done"].tap()
         XCTAssertTrue(app.collectionViews["reader-continuous"].waitForExistence(timeout: 10))
-        app.buttons["Pagina successiva"].tap()
+        app.buttons["Next page"].tap()
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
         capture("offline-download-reader")
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         app.buttons["remove-all-downloads"].tap()
         app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["No downloads"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["offline-book-\(id)"].exists)
     }
 
@@ -224,16 +218,16 @@ final class ReaderUITests: XCTestCase {
         if app.buttons["remove-all-downloads"].exists {
             app.buttons["remove-all-downloads"].tap()
             app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
-            XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["No downloads"].waitForExistence(timeout: 10))
         }
-        app.buttons["Chiudi"].tap()
+        app.buttons["Close"].tap()
         // Keep an online bookmark in an undownloaded series: offline must hide it.
         for title in ["Il giardino sospeso", "Segnali dal faro"] {
             app.staticTexts[title].firstMatch.tap()
             openBook()
-            app.buttons["Segnalibro"].tap()
-            let save = app.buttons["Salva segnalibro"]
-            if save.exists { save.tap() } else { app.buttons["Sposta segnalibro a questa pagina"].tap() }
+            app.buttons["Bookmark"].tap()
+            let save = app.buttons["Save bookmark"]
+            if save.exists { save.tap() } else { app.buttons["Move bookmark to this page"].tap() }
             app.buttons["reader-show-series"].tap()
             XCTAssertTrue(app.buttons["series-downloads"].waitForExistence(timeout: 10))
             app.navigationBars.buttons.firstMatch.tap()
@@ -247,11 +241,15 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.buttons["remove-download-\(id)"].waitForExistence(timeout: 30))
         app.navigationBars.buttons.firstMatch.tap()
         app.buttons["offline-mode"].tap()
-        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Offline reading"].firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.exists)
         XCTAssertFalse(app.staticTexts["Il giardino sospeso"].exists)
         XCTAssertFalse(app.staticTexts["Atlante delle nuvole"].exists)
-        app.buttons["Segnalibri"].tap()
+        app.buttons["followed-series-filter"].tap()
+        XCTAssertTrue(app.staticTexts["Followed series are unavailable offline"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Segnali dal faro"].exists, "Offline follow list is empty even for a downloaded series")
+        app.buttons["followed-series-filter"].tap()
+        app.buttons["Bookmarks"].tap()
         XCTAssertTrue(app.buttons["bookmark-demo-lighthouse"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["bookmark-demo-garden"].exists)
         capture("offline-library-bookmarks")
@@ -264,7 +262,7 @@ final class ReaderUITests: XCTestCase {
         app.buttons["confirm-remove-series-downloads"].firstMatch.tap()
         XCTAssertFalse(app.buttons["remove-download-\(id)"].waitForExistence(timeout: 3))
         app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["No downloads"].waitForExistence(timeout: 10))
         app.buttons["offline-mode"].tap()
         XCTAssertTrue(app.staticTexts["Il giardino sospeso"].firstMatch.waitForExistence(timeout: 10))
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
@@ -282,7 +280,7 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.buttons["remove-all-downloads"].isHittable, "Delete all stays in the top toolbar")
         app.buttons["remove-all-downloads"].tap()
         app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["No downloads"].waitForExistence(timeout: 10))
     }
 
     func testLibraryCoverFramesStayAlignedAcrossDifferentTitleLengths() {
@@ -301,37 +299,37 @@ final class ReaderUITests: XCTestCase {
         openBook()
         setReadingOptions()
         returnToFirstDemoPage()
-        let bookmarkMenu = app.buttons["Segnalibro"]
+        let bookmarkMenu = app.buttons["Bookmark"]
         XCTAssertTrue(bookmarkMenu.waitForExistence(timeout: 5))
         // Wait until the displayed image is loaded and the menu becomes enabled.
         let enabled = NSPredicate(format: "isEnabled == true")
         expectation(for: enabled, evaluatedWith: bookmarkMenu)
         waitForExpectations(timeout: 10)
         bookmarkMenu.tap()
-        if app.buttons["Rimuovi segnalibro"].exists {
-            app.buttons["Rimuovi segnalibro"].tap()
+        if app.buttons["Remove bookmark"].exists {
+            app.buttons["Remove bookmark"].tap()
             bookmarkMenu.tap()
         }
-        app.buttons["Salva segnalibro"].tap()
+        app.buttons["Save bookmark"].tap()
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 1"].waitForExistence(timeout: 5))
-        app.buttons["Pagina successiva"].tap()
+        app.buttons["Next page"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
         expectation(for: enabled, evaluatedWith: bookmarkMenu)
         waitForExpectations(timeout: 10)
         bookmarkMenu.tap()
-        app.buttons["Sposta segnalibro a questa pagina"].tap()
+        app.buttons["Move bookmark to this page"].tap()
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 2"].waitForExistence(timeout: 5))
-        app.buttons["Pagina successiva"].tap()
+        app.buttons["Next page"].tap()
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5))
         expectation(for: enabled, evaluatedWith: bookmarkMenu)
         waitForExpectations(timeout: 10)
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 2"].exists, "Page turns only update local resume")
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         openBook()
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5))
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         app.navigationBars.buttons.firstMatch.tap()
-        app.buttons["Segnalibri"].tap()
+        app.buttons["Bookmarks"].tap()
         let saved = app.buttons["bookmark-demo-lighthouse"]
         XCTAssertTrue(saved.waitForExistence(timeout: 5))
         saved.tap()
@@ -339,11 +337,11 @@ final class ReaderUITests: XCTestCase {
         expectation(for: enabled, evaluatedWith: bookmarkMenu)
         waitForExpectations(timeout: 10)
         bookmarkMenu.tap()
-        app.buttons["Rimuovi segnalibro"].tap()
-        app.buttons["Pagina successiva"].tap()
+        app.buttons["Remove bookmark"].tap()
+        app.buttons["Next page"].tap()
         expectation(for: enabled, evaluatedWith: bookmarkMenu)
         waitForExpectations(timeout: 10)
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         XCTAssertFalse(saved.exists, "A removed bookmark is not restored by further reading")
     }
 
@@ -352,14 +350,14 @@ final class ReaderUITests: XCTestCase {
         openBook()
         setReadingOptions(direction: "ltr", layout: "paged")
         returnToFirstDemoPage()
-        XCTAssertGreaterThan(app.buttons["Pagina successiva"].frame.midX, app.buttons["Pagina precedente"].frame.midX)
+        XCTAssertGreaterThan(app.buttons["Next page"].frame.midX, app.buttons["Previous page"].frame.midX)
 
         setReadingOptions(direction: "rtl", layout: "continuous", axis: "vertical")
         let scroll = app.collectionViews["reader-continuous"]
         XCTAssertTrue(scroll.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(app.buttons["Pagina successiva"].frame.midX, app.buttons["Pagina precedente"].frame.midX,
+        XCTAssertGreaterThan(app.buttons["Next page"].frame.midX, app.buttons["Previous page"].frame.midX,
                              "Vertical flow always advances down, regardless of saved horizontal direction")
-        app.buttons["Pagina successiva"].tap()
+        app.buttons["Next page"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
         waitForLoadedPage()
         for _ in 0..<3 {
@@ -369,33 +367,33 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), "Scrolling changes the current page without paging buttons")
         waitForLoadedPage()
         capture("05-continuous-reader")
-        app.buttons["Segnalibro"].tap()
-        let move = app.buttons["Sposta segnalibro a questa pagina"]
-        if move.exists { move.tap() } else { app.buttons["Salva segnalibro"].tap() }
+        app.buttons["Bookmark"].tap()
+        let move = app.buttons["Move bookmark to this page"]
+        if move.exists { move.tap() } else { app.buttons["Save bookmark"].tap() }
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 3"].waitForExistence(timeout: 5), "Continuous bookmarks use the visible loaded page")
-        app.buttons["Segnalibro"].tap()
-        app.buttons["Rimuovi segnalibro"].tap()
+        app.buttons["Bookmark"].tap()
+        app.buttons["Remove bookmark"].tap()
 
         // Only a deliberate extra pull at the end opens chapter navigation;
         // this demo has no next chapter, so the page must remain available.
         for _ in 0..<3 {
-            if app.alerts["Navigazione capitoli"].exists { break }
+            if app.alerts["Chapter navigation"].exists { break }
             scroll.swipeUp(velocity: .slow)
         }
-        XCTAssertTrue(app.alerts.staticTexts["Non c’è un capitolo successivo."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.alerts.staticTexts["There is no next chapter."].waitForExistence(timeout: 5))
         app.alerts.buttons["OK"].tap()
 
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         openBook()
         XCTAssertTrue(scroll.waitForExistence(timeout: 5), "Layout survives closing the volume")
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), "Continuous reader resumes the visible loaded page")
-        app.buttons["Opzioni di lettura"].tap()
-        XCTAssertEqual(app.buttons["reader-direction-rtl"].value as? String, "Selezionato")
+        app.buttons["Reading options"].tap()
+        XCTAssertEqual(app.buttons["reader-direction-rtl"].value as? String, "Selected")
         XCTAssertFalse(app.buttons["reader-direction-rtl"].isEnabled)
-        XCTAssertEqual(app.buttons["reader-axis-vertical"].value as? String, "Selezionato")
-        XCTAssertEqual(app.buttons["reader-layout-continuous"].value as? String, "Selezionato")
+        XCTAssertEqual(app.buttons["reader-axis-vertical"].value as? String, "Selected")
+        XCTAssertEqual(app.buttons["reader-layout-continuous"].value as? String, "Selected")
         tapOption("reader-layout-paged")
-        app.buttons["Fine"].tap()
+        app.buttons["Done"].tap()
         waitForLoadedPage()
         XCTAssertFalse(scroll.exists)
         XCTAssertTrue(app.staticTexts["3 / 3"].exists, "Changing layout preserves the current page")
@@ -423,12 +421,12 @@ final class ReaderUITests: XCTestCase {
         }
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), "LTR continuous advances with a left swipe")
         waitForLoadedPage()
-        app.buttons["Pagina precedente"].tap()
+        app.buttons["Previous page"].tap()
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
         waitForLoadedPage()
         setReadingOptions(direction: "rtl", layout: "continuous", axis: "horizontal")
         XCTAssertTrue(app.staticTexts["2 / 3"].exists, "Changing direction keeps the current page")
-        XCTAssertLessThan(app.buttons["Pagina successiva"].frame.midX, app.buttons["Pagina precedente"].frame.midX)
+        XCTAssertLessThan(app.buttons["Next page"].frame.midX, app.buttons["Previous page"].frame.midX)
         returnToFirstDemoPage()
         for _ in 0..<3 {
             if app.staticTexts["3 / 3"].exists { break }
@@ -437,37 +435,29 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5), "RTL continuous advances with a right swipe")
         waitForLoadedPage()
         capture("06-horizontal-continuous")
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
         openBook()
         XCTAssertTrue(app.staticTexts["3 / 3"].waitForExistence(timeout: 5))
         XCTAssertTrue(scroll.exists)
-        app.buttons["Opzioni di lettura"].tap()
-        XCTAssertEqual(app.buttons["reader-axis-horizontal"].value as? String, "Selezionato")
-        XCTAssertEqual(app.buttons["reader-direction-rtl"].value as? String, "Selezionato")
-        app.buttons["Fine"].tap()
+        app.buttons["Reading options"].tap()
+        XCTAssertEqual(app.buttons["reader-axis-horizontal"].value as? String, "Selected")
+        XCTAssertEqual(app.buttons["reader-direction-rtl"].value as? String, "Selected")
+        app.buttons["Done"].tap()
         setReadingOptions()
     }
 
-    func testZAppLanguageChangesImmediatelyAndPersists() {
+    func testEnglishInterfaceWithItalianDeviceAndLegacyPreference() {
+        app.terminate()
+        app.launchArguments += ["-app.language.v1", "italian"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Segnali dal faro"].exists, "Books keep their content language")
         app.buttons["connection-settings"].tap()
-        app.buttons["app-language"].tap()
-        app.buttons["English"].tap()
-        XCTAssertTrue(app.staticTexts["App language"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["app-language"].exists, "English-only interface needs no language picker")
         app.buttons["Close"].tap()
-        XCTAssertTrue(app.staticTexts["Read-only library"].exists)
-        XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.exists, "Interface language never translates books")
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 10), "Explicit language survives relaunch and overrides the Italian system language")
-        app.buttons["connection-settings"].tap()
-        app.buttons["app-language"].tap()
-        app.buttons["System"].tap()
-        XCTAssertTrue(app.staticTexts["Lingua dell’app"].firstMatch.waitForExistence(timeout: 5))
-        app.buttons["app-language"].tap()
-        app.buttons["Italiano"].tap()
-        capture("07-language-selection")
-        app.buttons["Chiudi"].tap()
-        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].exists)
-        XCTAssertTrue(app.staticTexts["Demo sul dispositivo"].exists, "Changing language keeps the current connection")
+        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["On-device demo"].exists, "Migration preserves the connection")
     }
 }

@@ -3,14 +3,11 @@ import XCTest
 @testable import TankarrReaderCore
 
 final class AppLanguageTests: XCTestCase {
-    func testSystemChoosesSupportedLanguageAndFallsBackToEnglish() {
-        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["it-IT", "en"]), "it")
-        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["en_GB", "it"]), "en")
-        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["fr-FR", "it"]), "it")
-        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: ["ja-JP"]), "en")
-        XCTAssertEqual(AppLanguage.system.code(preferredLanguages: []), "en")
-        XCTAssertEqual(AppLanguage.italian.code(preferredLanguages: ["en"]), "it")
-        XCTAssertEqual(AppLanguage.english.code(preferredLanguages: ["it"]), "en")
+    func testEnglishInterfaceIsIndependentOfDeviceLanguage() {
+        XCTAssertEqual(AppLanguage.allCases, [.english])
+        for languages in [["it-IT", "en"], ["fr-FR", "it"], ["ja-JP"], []] {
+            XCTAssertEqual(AppLanguage.english.code(preferredLanguages: languages), "en")
+        }
     }
 
     func testPreferencePersistsAndInvalidValuesFallBackWithoutTouchingReadingData() {
@@ -20,28 +17,25 @@ final class AppLanguageTests: XCTestCase {
         defaults.set("server profile", forKey: "serverProfile")
         defaults.set(3, forKey: "reading.position.example")
         let preferences = AppLanguagePreferences(defaults: defaults)
-        XCTAssertEqual(preferences.language, .system)
+        XCTAssertEqual(preferences.language, .english)
         preferences.language = .english
         XCTAssertEqual(AppLanguagePreferences(defaults: defaults).language, .english)
-        preferences.language = .italian
-        XCTAssertEqual(AppLanguagePreferences(defaults: defaults).language, .italian)
-        defaults.set("unsupported", forKey: AppLanguagePreferences.key)
-        XCTAssertEqual(preferences.language, .system)
-        defaults.set(42, forKey: AppLanguagePreferences.key)
-        XCTAssertEqual(preferences.language, .system)
+        for old in ["italian", "system", "unsupported"] {
+            defaults.set(old, forKey: AppLanguagePreferences.key)
+            XCTAssertEqual(AppLanguagePreferences(defaults: defaults).language, .english)
+            XCTAssertEqual(defaults.string(forKey: AppLanguagePreferences.key), "english")
+        }
         XCTAssertEqual(defaults.string(forKey: "serverProfile"), "server profile")
         XCTAssertEqual(defaults.integer(forKey: "reading.position.example"), 3)
     }
 
-    func testCatalogUsesEnglishAndPreservesItalianAndUnknownContent() {
+    func testCatalogUsesEnglishAndPreservesUnknownBookContent() {
         XCTAssertEqual(L10n.text("Connessione", language: .english), "Connection")
-        XCTAssertEqual(L10n.text("Connessione", language: .italian), "Connessione")
-        XCTAssertEqual(L10n.text("Segnalibri", language: .system, preferredLanguages: ["en-US"]), "Bookmarks")
-        XCTAssertEqual(L10n.text("Segnalibri", language: .system, preferredLanguages: ["it-IT"]), "Segnalibri")
+        XCTAssertEqual(L10n.text("Segnalibri", language: .english, preferredLanguages: ["it-IT"]), "Bookmarks")
         XCTAssertEqual(L10n.text("Original book title", language: .english), "Original book title")
     }
 
-    func testRuntimeSwitchUpdatesFormattingAndCoreErrors() {
+    func testFormattingAndCoreErrorsAreEnglish() {
         let before = L10n.language
         defer { L10n.language = before }
         L10n.language = .english
@@ -49,10 +43,6 @@ final class AppLanguageTests: XCTestCase {
         XCTAssertEqual(L10n.format("%d di %d", 2, 13), "2 of 13")
         XCTAssertEqual(ReaderError.unavailable(503).errorDescription, "Resource unavailable (503). Try again.")
         XCTAssertEqual(ConnectionMode.automatic.label, "Automatic")
-        L10n.language = .italian
-        XCTAssertEqual(L10n.format("%@ · Pagina %d", "Volume 1", 7), "Volume 1 · Pagina 7")
-        XCTAssertEqual(ReaderError.unavailable(503).errorDescription, "Risorsa non disponibile (503). Riprova.")
-        XCTAssertEqual(ConnectionMode.automatic.label, "Automatico")
     }
 
     func testTranslationsKeepFormatArgumentsInOrder() throws {

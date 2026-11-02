@@ -92,6 +92,7 @@ struct DownloadsView: View {
     @State private var removeID: String?
     @State private var error: String?
     @State private var pendingSeries: String?
+    @State private var retrying = false
     @AppStorage("reader.downloads.sort.v1") private var sorting: ReaderListSort = .recent
     private var groups: [DownloadSeriesGroup] {
         ReaderListOrdering.downloadGroups(downloads.items, sort: sorting)
@@ -108,18 +109,30 @@ struct DownloadsView: View {
                     Text(L10n.text("I download continuano quando cambi app o blocchi lo schermo. La coda viene salvata: dopo una chiusura forzata riprende alla riapertura dalle pagine mancanti. iOS decide i tempi in background."))
                         .font(.footnote).foregroundStyle(.secondary)
                     if !downloads.queuedIDs.isEmpty { Text(L10n.format("%d download in coda", downloads.queuedIDs.count)) }
-                    if downloads.backgroundPaused && model.canDownload {
-                        Button(L10n.text("Riprendi la coda")) { Task { await model.resumeBackgroundDownloads() } }
+                    if downloads.canResumeBackgroundQueue && model.canDownload {
+                        Button(L10n.text("Riprova i download")) {
+                            retrying = true
+                            Task {
+                                defer { retrying = false }
+                                // Choose a working LAN/HTTPS route again, rather
+                                // than retrying an unreachable cached endpoint.
+                                await model.reconnect()
+                            }
+                        }.disabled(retrying || model.busy)
+                            .accessibilityIdentifier("resume-download-queue")
                     }
+                    if retrying { ProgressView(L10n.text("Ricollegamento…")) }
                     if model.offlineMode {
                         Label(L10n.text("Lettura offline"), systemImage: "wifi.slash")
                         Button(L10n.text("Ricollega al server")) { Task { await model.reconnect() } }.disabled(model.busy)
                     } else if downloads.items.contains(where: { $0.complete }) {
-                        Button(L10n.text("Usa senza connessione")) { Task { await model.useOffline() } }
+                        Button(L10n.text("Attiva modalità offline")) { Task { await model.useOffline() } }
                             .accessibilityIdentifier("use-offline")
+                        Text(L10n.text("Mostra solo i libri scaricati e mette in pausa i download finché non torni online."))
+                            .font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-                if let message = error ?? downloads.storageError?.localizedDescription {
+                if let message = error ?? downloads.storageError?.localizedDescription ?? model.error {
                     Section { Text(message).foregroundStyle(.orange) }
                 }
                 if downloads.items.isEmpty {

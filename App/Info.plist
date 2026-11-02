@@ -3,7 +3,7 @@
 <plist version="1.0"><dict>
     <key>CFBundleDisplayName</key><string>Tankarr Reader</string>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleLocalizations</key><array><string>it</string><string>en</string></array>
+    <key>CFBundleLocalizations</key><array><string>en</string></array>
     <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>

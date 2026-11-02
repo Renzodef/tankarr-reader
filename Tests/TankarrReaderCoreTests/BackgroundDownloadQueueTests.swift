@@ -54,6 +54,30 @@ final class BackgroundDownloadQueueTests: XCTestCase {
         XCTAssertFalse(queue.accepts(other))
     }
 
+    func testRetryRejectsCancelledTasksEvenWhenTheirPageIsStillQueued() throws {
+        var queue = BackgroundDownloadQueue(account: account)
+        queue.jobs = try [job()]
+        let page = BackgroundPage(account: account.key, job: queue.jobs[0], index: nil)
+        XCTAssertTrue(queue.acceptsFailure(page, taskID: 7, currentTaskID: 7, paused: false))
+        XCTAssertFalse(queue.acceptsFailure(page, taskID: 7, currentTaskID: nil, paused: false),
+                       "A late callback from a cancelled task must not pause the resumed queue")
+        XCTAssertFalse(queue.acceptsFailure(page, taskID: 7, currentTaskID: 8, paused: false))
+        XCTAssertFalse(queue.acceptsFailure(page, taskID: 8, currentTaskID: 8, paused: true))
+        XCTAssertTrue(queue.acceptsFailure(page, taskID: 8, currentTaskID: 8, paused: false))
+        queue.jobs.removeAll()
+        XCTAssertFalse(queue.acceptsFailure(page, taskID: 8, currentTaskID: 8, paused: false))
+    }
+
+    func testEmptyOrRunningQueueDoesNotOfferResume() throws {
+        var queue = BackgroundDownloadQueue(account: account)
+        XCTAssertFalse(queue.canResume(paused: true))
+        queue.jobs = try [job()]
+        XCTAssertTrue(queue.canResume(paused: true))
+        XCTAssertFalse(queue.canResume(paused: false))
+        queue.jobs.removeAll()
+        XCTAssertFalse(queue.canResume(paused: true))
+    }
+
     func testDiskCommitBeforeQueueCommitDoesNotLosePageAfterRelaunch() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

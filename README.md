@@ -3,8 +3,7 @@
 Client nativo SwiftUI per il gateway Tankarr Reader dell'self-hosted. iOS 17+,
 iPhone e iPad; nessuna dipendenza esterna. Catalogo con ricerca e copertine,
 elenco dei libri scaricati, lettura a pagine con zoom e scorrimento continuo,
-verticale oppure orizzontale, con direzione selezionabile. Interfaccia italiana
-e inglese.
+verticale oppure orizzontale, con direzione selezionabile. Interfaccia in inglese.
 L'ultima pagina letta resta sul dispositivo; i segnalibri vengono salvati sul
 server Tankarr. Capitoli e volumi possono essere scaricati sul dispositivo per
 la lettura offline. Nessuna modifica alla libreria,
@@ -55,13 +54,10 @@ salvare il segnalibro resta un'azione esplicita.
 
 ## Lingua dell'app
 
-In **Connessione → Lingua dell'app** si può scegliere **Sistema**, **Italiano** o
-**English**. Sistema è l'impostazione iniziale: sceglie la prima lingua supportata
-(italiano o inglese) nell'elenco preferenze di iOS, oppure l'inglese se non ne
-trova una. Il cambio si applica
-subito e viene ricordato sul dispositivo, senza perdere connessione o posizione
-di lettura. Cambia i comandi e i messaggi dell'app; non traduce titoli, libri o
-racconti demo, che restano nella lingua dei contenuti.
+L’interfaccia è sempre in inglese, indipendentemente dalla lingua di iOS.
+Le preferenze precedenti Sistema/Italiano e le configurazioni esportate restano
+compatibili: connessione, segnalibri, serie seguite e opzioni di lettura sono
+conservati. Titoli, libri e racconti demo mantengono la lingua dei contenuti.
 
 ## Serie seguite
 
@@ -258,7 +254,8 @@ simulatore. L'app non include password, account Apple o certificati di firma.
 
 `AppStore/metadata.json` contiene i testi italiano/inglese; `REVIEW_NOTES.md`
 le istruzioni per Apple; `SCREENSHOTS.md` la sequenza di acquisizione reale.
-L'interfaccia è disponibile in italiano e inglese; la demo originale resta italiana.
+La scheda Store può avere testi localizzati; l’interfaccia dell’app è in inglese.
+La demo originale resta italiana.
 `python3 Tools/check_store_assets.py` controlla limiti dei testi, icona e
 manifest privacy incluso nel target. La schermata privacy è disponibile anche
 offline; gli URL pubblici `/privacy` e `/support` servono documenti statici,
@@ -286,3 +283,12 @@ L'invio alla revisione App Store è un'azione
 manuale separata, con versione e build esplicite: non cambia una versione già
 in revisione. Configurazione, comandi e rinnovo della firma sono descritti in
 [BUILD_AND_UPLOAD.md](AppStore/BUILD_AND_UPLOAD.md).
+
+### Ripresa della coda e serie seguite offline
+
+**Enable offline mode** mostra le copie scaricate e mette in pausa i download.
+**Retry downloads** compare solo con una coda effettivamente sospesa: verifica
+nuovamente la connessione locale/HTTPS e riprende le pagine mancanti. Il controllo esistente contro gli errori tardivi di trasferimenti annullati
+è coperto da test di regressione.
+La schermata delle serie seguite resta vuota offline e invita a tornare online;
+non filtra le notifiche in base ai libri scaricati.
