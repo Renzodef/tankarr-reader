@@ -92,10 +92,17 @@ struct DownloadsView: View {
     @State private var removeID: String?
     @State private var error: String?
     @State private var pendingSeries: String?
+    @AppStorage("reader.downloads.sort.v1") private var sorting: ReaderListSort = .recent
+    private var groups: [DownloadSeriesGroup] {
+        ReaderListOrdering.downloadGroups(downloads.items, sort: sorting)
+    }
     var body: some View {
         NavigationStack {
             List {
                 Section {
+                    Picker(L10n.text("Ordina per"), selection: $sorting) {
+                        ForEach(ReaderListSort.allCases) { option in Text(option.title).tag(option) }
+                    }.accessibilityIdentifier("downloads-sort")
                     Text(L10n.format("Spazio usato: %@", ByteCountFormatter.string(fromByteCount: downloads.totalBytes, countStyle: .file)))
                         .accessibilityIdentifier("download-storage")
                     Text(L10n.text("I download continuano quando cambi app o blocchi lo schermo. La coda viene salvata: dopo una chiusura forzata riprende alla riapertura dalle pagine mancanti. iOS decide i tempi in background."))
@@ -119,23 +126,26 @@ struct DownloadsView: View {
                     ContentUnavailableView(L10n.text("Nessun download"), systemImage: "arrow.down.circle",
                         description: Text(L10n.text("Apri una serie e tocca la freccia accanto al capitolo o volume.")))
                 }
-                ForEach(downloads.items) { item in
-                    HStack {
-                        Button { selected = item.listing } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.series.title).font(.headline).foregroundStyle(.primary)
-                                Text(item.listing.label).foregroundStyle(.primary)
-                                DownloadBookProgress(bookID: item.id)
+                ForEach(groups) { group in
+                    Section {
+                        ForEach(group.items) { item in
+                        HStack {
+                            Button { selected = item.listing } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(item.listing.label).font(.headline).foregroundStyle(.primary)
+                                    DownloadBookProgress(bookID: item.id)
+                                }
+                            }.buttonStyle(.plain).disabled(!item.complete)
+                                .accessibilityIdentifier("offline-book-\(item.id)")
+                            Spacer()
+                            DownloadBookControl(series: item.series, book: item.listing)
+                        }.padding(.vertical, 4)
+                            .swipeActions {
+                                Button(L10n.text("Rimuovi download"), role: .destructive) { removeID = item.id }
                             }
-                        }.buttonStyle(.plain).disabled(!item.complete)
-                            .accessibilityIdentifier("offline-book-\(item.id)")
-                        Spacer()
-                        DownloadBookControl(series: item.series, book: item.listing)
-                    }.padding(.vertical, 4)
-                        .swipeActions {
-                            Button(L10n.text("Rimuovi download"), role: .destructive) { removeID = item.id }
                         }
-                }
+                        } header: { Text(group.series.title).textCase(nil) }
+                    }
                 if !downloads.failures.isEmpty {
                     Section(L10n.text("Download interrotto")) {
                         ForEach(downloads.failures.keys.sorted(), id: \.self) { id in

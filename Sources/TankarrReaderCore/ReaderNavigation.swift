@@ -34,7 +34,9 @@ public enum ReaderNavigation {
         return forward ? second > first : second < first
     }
 
-    private static func position(title: String, chapter: String?, volume: String?, unit: String?) -> (String, Int, Double?)? {
+    // Shared with list presentation so prologues and decimal chapters keep
+    // the same meaning as the reader's boundary checks.
+    static func position(title: String, chapter: String?, volume: String?, unit: String?) -> (String, Int, Double?)? {
         func number(_ text: String?) -> Double? {
             guard let text, let value = Double(text), value.isFinite else { return nil }; return value
         }
