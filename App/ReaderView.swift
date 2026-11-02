@@ -239,6 +239,12 @@ private struct ReaderChapterView: View {
                     let next = try await model.book(id)
                     guard next.id == id, next.pageCount > 0,
                           book.seriesId == nil || next.seriesId == book.seriesId else { throw ReaderError.unavailable(422) }
+                    guard ReaderNavigation.allowsTransition(from: book, to: next, forward: forward,
+                        current: model.downloads.items.first(where: { $0.id == book.id })?.listing,
+                        candidate: model.downloads.items.first(where: { $0.id == next.id })?.listing) else {
+                        boundaryMessage = (forward ? ReaderBoundary.end : .beginning).message
+                        return
+                    }
                     try Task.checkCancellation()
                     onOpenChapter(next, last ? next.pageCount - 1 : 0)
                 } catch {

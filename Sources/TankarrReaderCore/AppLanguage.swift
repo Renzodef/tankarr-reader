@@ -62,6 +62,11 @@ public enum L10n {
     // Keys are the original Italian UI copy. Library metadata, artwork and story text
     // never pass through this catalog: changing the UI does not translate a book.
     static let english: [String: String] = [
+        "Aggiorna Tankarr": "Refresh Tankarr",
+        "Tankarr aggiornato": "Tankarr refreshed",
+        "Esporta configurazione…": "Export configuration…",
+        "Impossibile ripristinare tutte le serie seguite. Reimporta la configurazione per riprovare.": "Unable to restore all followed series. Import the configuration again to retry.",
+        "L’esportazione contiene indirizzi, utente, lingua, opzioni di lettura e serie seguite. Non contiene password, download o token push. Dopo l’importazione tocca Connetti: le serie seguite vengono aggiunte solo allo stesso account e server; il consenso alle notifiche va dato su ogni dispositivo.": "The export contains addresses, username, language, reading options and followed series. It contains no passwords, downloads or push tokens. After importing, tap Connect: followed series are added only to the same account and server; notification permission must be granted on each device.",
         "Se segui una serie e consenti le notifiche, il server salva la selezione e riceve il token APNs del dispositivo, lingua e account per avvisarti dei nuovi capitoli. Apple consegna l’avviso, che contiene titolo e numero del capitolo. Puoi smettere di seguire una serie o disabilitare le notifiche nelle impostazioni iOS.": "If you follow a series and allow notifications, your server stores the selection and receives the device APNs token, language and account to notify you about new chapters. Apple delivers the alert, which includes the chapter title and number. You can unfollow a series or disable notifications in iOS Settings.",
         "Serie seguite": "Followed series",
         "Nessuna serie seguita": "No followed series",

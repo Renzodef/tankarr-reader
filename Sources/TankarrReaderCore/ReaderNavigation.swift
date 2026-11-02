@@ -21,6 +21,38 @@ public enum ReaderBoundary: Equatable {
 }
 
 public enum ReaderNavigation {
+    /// Reject a provable wrap in old downloaded metadata too. Never infer a
+    /// neighbour from the filtered offline list: missing chapters still stop.
+    public static func allowsTransition(from: ReaderBook, to: ReaderBook, forward: Bool,
+                                        current: LibraryBook? = nil, candidate: LibraryBook? = nil) -> Bool {
+        guard let a = position(title: current?.title ?? from.title, chapter: current?.chapter,
+                               volume: current?.volume, unit: current?.unit),
+              let b = position(title: candidate?.title ?? to.title, chapter: candidate?.chapter,
+                               volume: candidate?.volume, unit: candidate?.unit), a.0 == b.0 else { return true }
+        if a.1 != b.1 { return forward ? b.1 > a.1 : b.1 < a.1 }
+        guard let first = a.2, let second = b.2 else { return true }
+        return forward ? second > first : second < first
+    }
+
+    private static func position(title: String, chapter: String?, volume: String?, unit: String?) -> (String, Int, Double?)? {
+        func number(_ text: String?) -> Double? {
+            guard let text, let value = Double(text), value.isFinite else { return nil }; return value
+        }
+        func suffix(_ pattern: String) -> String? {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                  let match = regex.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)),
+                  match.numberOfRanges > 1, let range = Range(match.range(at: 1), in: title) else { return nil }
+            return String(title[range])
+        }
+        if title.range(of: "^prolog(?:ue|o)?\\b", options: [.regularExpression, .caseInsensitive]) != nil {
+            return ("chapter", -1, number(suffix("^prolog(?:ue|o)?\\s+(\\d+(?:\\.\\d+)?)")))
+        }
+        if unit == "volume", let value = number(volume) { return ("volume", 0, value) }
+        if let value = number(chapter) { return ("chapter", 0, value) }
+        if let value = number(suffix("^(?:chapter|capitolo)\\s+(-?\\d+(?:\\.\\d+)?)")) { return ("chapter", 0, value) }
+        return nil
+    }
+
     public static func step(book: ReaderBook, page: Int, forward: Bool,
                             offline: Bool, downloaded: Set<String>) -> ReaderStep {
         let next = page + (forward ? 1 : -1)
@@ -37,8 +69,8 @@ public enum ReaderNavigation {
 }
 
 public enum OfflineConnectivity {
-    /// Authentication, TLS, cancellation and server errors must remain visible;
-    /// only loss of reachability is an automatic offline transition.
+    /// Only loss of reachability is an automatic offline transition. Authentication,
+    /// TLS and server errors remain visible; UI task cancellation is handled separately.
     public static func isReachabilityFailure(_ error: Error) -> Bool {
         guard let error = error as? URLError else { return false }
         return [.notConnectedToInternet, .networkConnectionLost, .timedOut,

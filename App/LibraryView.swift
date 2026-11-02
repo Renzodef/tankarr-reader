@@ -54,6 +54,7 @@ struct LibraryView: View {
             }
             .navigationTitle("Tankarr")
             .searchable(text: $search, prompt: L10n.text("Cerca nella libreria"))
+            .scrollBounceBehavior(.always, axes: .vertical)
             .refreshable { await model.refresh() }
             .navigationDestination(for: LibrarySeries.self) { SeriesView(series: $0) }
             .toolbar {
@@ -400,6 +401,9 @@ struct ConnectionView: View {
     @State private var profile = ServerProfile()
     @State private var password = ""
     @State private var importing = false
+    @State private var exporting = false
+    @State private var exportDocument: ReaderConfigurationDocument?
+    @State private var importedConfiguration: ImportedReaderConfiguration?
     @State private var importError: String?
     @State private var confirmDisconnect = false
     var body: some View {
@@ -428,12 +432,51 @@ struct ConnectionView: View {
                     SecureField(L10n.text("Password"), text: $password).textContentType(.password)
                 }.textInputAutocapitalization(.never).autocorrectionDisabled()
                 Section {
-                    Button { Task { await model.connect(profile, password: password) } } label: {
+                    Button {
+                        Task {
+                            let imported = importedConfiguration
+                            if await model.connect(profile, password: password), let imported {
+                                await model.applyConfiguration(imported)
+                                importedConfiguration = nil
+                            }
+                        }
+                    } label: {
                         HStack { Text(L10n.text("Connetti")); Spacer(); if model.busy { ProgressView() } }
                     }.disabled(model.busy)
+                    if model.canBrowse {
+                        Button {
+                            Task {
+                                if model.offlineMode { await model.reconnect() }
+                                else { await model.refresh() }
+                            }
+                        } label: {
+                            HStack {
+                                Label(L10n.text("Aggiorna Tankarr"), systemImage: "arrow.clockwise")
+                                Spacer(); if model.refreshing { ProgressView() }
+                            }
+                        }.disabled(model.busy || model.refreshing)
+                            .accessibilityIdentifier("refresh-tankarr")
+                        if let notice = model.refreshNotice {
+                            Text(notice).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("refresh-result")
+                        }
+                    }
                     Button(L10n.text("Importa configurazione…")) { importing = true }.disabled(model.busy)
+                    Button(L10n.text("Esporta configurazione…")) {
+                        do {
+                            var configuration = model.configuration()
+                            if profile != model.profile {
+                                configuration.readingOptions = [:]; configuration.followedSeries = []
+                            }
+                            configuration.profile = profile
+                            exportDocument = ReaderConfigurationDocument(data: try configuration.encoded())
+                            importError = nil; exporting = true
+                        } catch { importError = L10n.format("Configurazione non valida: %@", error.localizedDescription) }
+                    }.disabled(model.busy).accessibilityIdentifier("export-configuration")
                 } footer: {
-                    Text(L10n.text("La password resta nel Portachiavi. L’ultima pagina letta è ricordata su questo dispositivo; i segnalibri salvati dal lettore sono condivisi con Tankarr. In Automatico provo prima l’indirizzo locale e poi HTTPS; aggiorna la libreria per cambiare rete."))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(L10n.text("La password resta nel Portachiavi. L’ultima pagina letta è ricordata su questo dispositivo; i segnalibri salvati dal lettore sono condivisi con Tankarr. In Automatico provo prima l’indirizzo locale e poi HTTPS; aggiorna la libreria per cambiare rete."))
+                        Text(L10n.text("L’esportazione contiene indirizzi, utente, lingua, opzioni di lettura e serie seguite. Non contiene password, download o token push. Dopo l’importazione tocca Connetti: le serie seguite vengono aggiunte solo allo stesso account e server; il consenso alle notifiche va dato su ogni dispositivo."))
+                    }
                 }
                 if let error = importError ?? model.error { Section { Text(error).foregroundStyle(.red) } }
                 Section(L10n.text("Modalità offline")) {
@@ -461,18 +504,31 @@ struct ConnectionView: View {
                     do {
                         let url = try result.get(); let granted = url.startAccessingSecurityScopedResource()
                         defer { if granted { url.stopAccessingSecurityScopedResource() } }
-                        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-                        guard data.count <= 16 * 1024 else { throw ReaderError.invalidAccount }
-                        let imported = try JSONDecoder().decode(ImportedConnection.self, from: data)
-                        let newProfile = ServerProfile(localAddress: imported.localAddress ?? "", remoteAddress: imported.remoteAddress,
-                            username: imported.username, mode: .automatic, instanceID: imported.instanceID)
-                        _ = try newProfile.candidates()
-                        profile = newProfile; password = imported.password; importError = nil
+                        let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                        guard size <= ReaderConfiguration.maximumBytes else { throw ReaderError.invalidAccount }
+                        let imported = try ImportedReaderConfiguration(data: Data(contentsOf: url, options: [.mappedIfSafe]))
+                        let value = imported.configuration
+                        password = imported.password ?? (value.matchesAccount(model.profile) ? PasswordStore.read() ?? "" : "")
+                        profile = value.profile; importedConfiguration = imported; importError = nil
                     } catch { importError = L10n.format("Configurazione non valida: %@", error.localizedDescription) }
+                }
+                .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .json,
+                              defaultFilename: "Tankarr Reader") { result in
+                    if case .failure(let error) = result {
+                        importError = L10n.format("Configurazione non valida: %@", error.localizedDescription)
+                    }
                 }
         }
     }
-    private struct ImportedConnection: Decodable {
-        let localAddress: String?; let remoteAddress: String; let username: String; let password: String; let instanceID: String?
+}
+
+private struct ReaderConfigurationDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else { throw ReaderError.invalidAccount }
+        self.data = data
     }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }

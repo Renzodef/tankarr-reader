@@ -39,4 +39,20 @@ final class ReaderNavigationTests: XCTestCase {
             XCTAssertFalse(OfflineConnectivity.isReachabilityFailure(error))
         }
     }
+
+    func testOldDownloadedNeighboursCannotWrapFromTheLastChapterToAPrologueOrFirstChapter() {
+        func metadata(_ id: String, _ title: String) -> ReaderBook {
+            ReaderBook(id: id, seriesTitle: "Series", title: title, pageCount: 3,
+                direction: "rtl", mode: "manga", previousId: nil, nextId: nil, seriesId: "series")
+        }
+        let last = metadata("last", "Chapter 300")
+        XCTAssertFalse(ReaderNavigation.allowsTransition(from: last, to: metadata("first", "Capitolo 1"), forward: true))
+        XCTAssertFalse(ReaderNavigation.allowsTransition(from: last, to: metadata("prologue", "Prologue 1"), forward: true))
+        let listing = LibraryBook(id: "prologue", label: "Libro", title: "Prologue 1", volume: "1", chapter: "", unit: "chapter", language: "en")
+        XCTAssertFalse(ReaderNavigation.allowsTransition(from: last, to: metadata("prologue", "Volume 1"), forward: true, candidate: listing),
+                       "Old cached book titles may hide that a file is a prologue")
+        XCTAssertTrue(ReaderNavigation.allowsTransition(from: metadata("two", "Chapter 2"), to: last, forward: true))
+        XCTAssertTrue(ReaderNavigation.allowsTransition(from: last, to: metadata("two", "Chapter 2"), forward: false))
+        XCTAssertTrue(ReaderNavigation.allowsTransition(from: metadata("prologue", "Prologue 1"), to: metadata("first", "Chapter 1"), forward: true))
+    }
 }

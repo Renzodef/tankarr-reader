@@ -209,18 +209,19 @@ public final class ReaderAPI: @unchecked Sendable {
         session = URLSession(configuration: config, delegate: RefuseRedirects(), delegateQueue: nil)
     }
     deinit { session.invalidateAndCancel() }
-    public func data(_ path: String, timeout: TimeInterval = 35, method: String = "GET", jsonBody: Data? = nil) async throws -> Data {
-        let request = try Endpoint.request(base: base, path: path, username: username, password: password,
+    public func data(_ path: String, timeout: TimeInterval = 35, method: String = "GET", jsonBody: Data? = nil, reload: Bool = false) async throws -> Data {
+        var request = try Endpoint.request(base: base, path: path, username: username, password: password,
                                            timeout: timeout, method: method, jsonBody: jsonBody)
+        if reload { request.setValue("no-cache", forHTTPHeaderField: "Cache-Control") }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw ReaderError.unavailable(0) }
         if http.statusCode == 401 { throw ReaderError.unauthorized }
         guard http.statusCode == 200 else { throw ReaderError.unavailable(http.statusCode) }
         return data
     }
-    public func get<T: Decodable>(_ path: String, as type: T.Type = T.self, timeout: TimeInterval = 35) async throws -> T {
+    public func get<T: Decodable>(_ path: String, as type: T.Type = T.self, timeout: TimeInterval = 35, reload: Bool = false) async throws -> T {
         let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try decoder.decode(T.self, from: await data(path, timeout: timeout))
+        return try decoder.decode(T.self, from: await data(path, timeout: timeout, reload: reload))
     }
     public func backgroundRequest(book: String, page: Int?) throws -> URLRequest {
         if let page, page < 0 { throw ReaderError.invalidIdentifier }

@@ -11,6 +11,7 @@ private final class BackgroundReaderServer: @unchecked Sendable {
     private let lock = NSLock()
     private var received: [(String, Date)] = []
     private var sent: [String] = []
+    private var reloadPaths: [String] = []
     private var savedBookmark: [String: Any]?
     private var rejectWrites = false
     private var rejectConnections = false
@@ -42,6 +43,7 @@ private final class BackgroundReaderServer: @unchecked Sendable {
     var address: String { "http://127.0.0.1:\(port)" }
     var requests: [(String, Date)] { lock.lock(); defer { lock.unlock() }; return received }
     var delivered: [String] { lock.lock(); defer { lock.unlock() }; return sent }
+    var libraryReloads: Int { lock.lock(); defer { lock.unlock() }; return reloadPaths.filter { $0 == "/v1/library" }.count }
     var bookmarkPage: Int? { lock.lock(); defer { lock.unlock() }; return savedBookmark?["page_index"] as? Int }
     var failBookmarkWrites: Bool {
         get { lock.lock(); defer { lock.unlock() }; return rejectWrites }
@@ -69,6 +71,9 @@ private final class BackgroundReaderServer: @unchecked Sendable {
                 guard parts.count >= 2 else { connection.cancel(); return }
                 let method = String(parts[0]), path = String(parts[1])
                 self.lock.lock(); self.received.append((path, Date())); self.lock.unlock()
+                if text.lowercased().contains("cache-control: no-cache") {
+                    self.lock.lock(); self.reloadPaths.append(path); self.lock.unlock()
+                }
                 if self.failConnections { connection.cancel(); return }
                 let payload = buffer.subdata(in: separator.upperBound..<(separator.upperBound + length))
                 let (status, body) = self.response(method, path: path, payload: payload)
@@ -131,7 +136,8 @@ final class BackgroundDownloadUITests: XCTestCase {
         continueAfterFailure = false
         server = try BackgroundReaderServer()
         app = XCUIApplication()
-        app.launchArguments = ["--background-download-test", server.address, "-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
+        app.launchArguments = ["--background-download-test", server.address, "-AppleLanguages", "(it)", "-AppleLocale", "it_IT",
+                               "-app.language.v1", "italian"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Background download fixture"].firstMatch.waitForExistence(timeout: 15))
     }
@@ -145,9 +151,10 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.navigationBars.buttons.firstMatch.tap()
         app.buttons["downloads"].tap()
     }
-    private func waitUntil(_ condition: @escaping () -> Bool, seconds: TimeInterval = 100) {
+    private func waitUntil(_ condition: @escaping () -> Bool, seconds: TimeInterval = 100,
+                           file: StaticString = #filePath, line: UInt = #line) {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: seconds), .completed)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: seconds), .completed, file: file, line: line)
     }
     private func assertComplete() {
         XCTAssertTrue(app.buttons["remove-download-bg-book-1"].waitForExistence(timeout: 120))
@@ -174,6 +181,40 @@ final class BackgroundDownloadUITests: XCTestCase {
             app.buttons["Pagina successiva"].tap()
         }
         readyPage("8 / 8")
+    }
+
+    func testPullAndSettingsRefreshKeepTheSessionAndExposeSafeConfigurationExport() {
+        let handshakes = server.requests.filter { $0.0 == "/v1/status" }.count
+        let library = app.scrollViews.firstMatch
+        library.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(forDuration: 0.1,
+            thenDragTo: library.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
+        waitUntil({ self.server.libraryReloads >= 1 }, seconds: 15)
+        XCTAssertFalse(app.staticTexts["Connessione non riuscita"].exists)
+        XCTAssertTrue(app.staticTexts["Background download fixture"].exists)
+        app.buttons["connection-settings"].tap()
+        let refresh = app.buttons["refresh-tankarr"]
+        let form = app.collectionViews.firstMatch
+        for _ in 0..<5 {
+            if refresh.isHittable { break }
+            form.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(refresh.isHittable)
+        let reloads = server.libraryReloads
+        refresh.tap()
+        waitUntil({ self.server.libraryReloads > reloads }, seconds: 15)
+        for _ in 0..<3 {
+            if app.staticTexts["refresh-result"].exists { break }
+            form.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(app.staticTexts["refresh-result"].waitForExistence(timeout: 10),
+                      "Refresh feedback: \(app.staticTexts.allElementsBoundByIndex.map(\.label))")
+        XCTAssertEqual(app.staticTexts["refresh-result"].label, "Tankarr aggiornato")
+        XCTAssertEqual(server.requests.filter { $0.0 == "/v1/status" }.count, handshakes,
+                       "Refreshing does not reconnect or replace a healthy session")
+        let export = app.buttons["export-configuration"]
+        for _ in 0..<3 { if export.isHittable { break }; form.swipeUp(velocity: .slow) }
+        XCTAssertTrue(export.isHittable)
+        XCTAssertFalse(app.staticTexts["Connessione non riuscita"].exists)
     }
 
     func testChapterBoundariesAndSeriesBookmarkRespectOfflineAvailability() {
