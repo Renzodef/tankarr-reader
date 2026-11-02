@@ -49,7 +49,7 @@ def main():
         project += ' DEBUG_INFORMATION_FORMAT = dwarf; SWIFT_OPTIMIZATION_LEVEL = "-Onone";' if config == "Debug" else ' DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule;'
         put("project:" + config, f"isa = XCBuildConfiguration; buildSettings = {{ {project} }}; name = {config};")
         target = '''PRODUCT_NAME = "Tankarr Reader"; PRODUCT_BUNDLE_IDENTIFIER = app.tankarr.reader;
-            CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 2; MARKETING_VERSION = 1.0.0;
+            CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0.1;
             INFOPLIST_FILE = App/Info.plist; GENERATE_INFOPLIST_FILE = NO;
             TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
             SUPPORTS_MACCATALYST = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;

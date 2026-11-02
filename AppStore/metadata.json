@@ -1,8 +1,8 @@
 {
   "name": "Tankarr Reader",
   "bundle_id": "app.tankarr.reader",
-  "version": "1.0.0",
-  "build": "2",
+  "version": "1.0.1",
+  "build": "1",
   "primary_category": "BOOKS",
   "price": "FREE",
   "copyright": "2026 Vitoronzo De Francesco",
