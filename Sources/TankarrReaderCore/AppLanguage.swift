@@ -1,30 +1,46 @@
 import Foundation
 
-/// English-only interface. Accept older exports without changing their server,
-/// bookmarks or reading preferences.
+/// Interface language is independent of the server and the books' content.
 public enum AppLanguage: String, Codable, CaseIterable, Identifiable {
-    case english
+    case system, italian, english
+    public static let supportedCodes = ["en", "it"]
     public var id: String { rawValue }
-    public var label: String { "English" }
-    public func code(preferredLanguages: [String] = Locale.preferredLanguages) -> String { "en" }
-    public init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer()
-        let raw = try value.decode(String.self)
-        guard ["system", "italian", "english"].contains(raw) else {
-            throw DecodingError.dataCorruptedError(in: value, debugDescription: "Unknown interface language")
+    public var label: String {
+        switch self {
+        case .system: return L10n.text("Sistema")
+        case .italian: return "Italiano"
+        case .english: return "English"
         }
-        self = .english
+    }
+    public func code(preferredLanguages: [String] = Locale.preferredLanguages) -> String {
+        switch self {
+        case .italian: return "it"
+        case .english: return "en"
+        case .system:
+            for language in preferredLanguages {
+                let base = language.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init)
+                if let base, Self.supportedCodes.contains(base) { return base }
+            }
+            return "en"
+        }
     }
 }
 
 public final class AppLanguagePreferences {
     private let defaults: UserDefaults
-    public static let key = "app.language.v1"
+    public static let key = "app.language.v2"
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
     public var language: AppLanguage {
         get {
-            if defaults.string(forKey: Self.key) != "english" { defaults.set("english", forKey: Self.key) }
-            return .english
+            if let raw = defaults.string(forKey: Self.key) {
+                return AppLanguage(rawValue: raw) ?? .system
+            }
+            // 1.0.1 wrote "english" even when the user never chose it. Start
+            // following iOS again; retain an older Italian/System preference.
+            let legacy = defaults.string(forKey: "app.language.v1")
+            let initial: AppLanguage = legacy == "italian" ? .italian : .system
+            defaults.set(initial.rawValue, forKey: Self.key)
+            return initial
         }
         set { defaults.set(newValue.rawValue, forKey: Self.key) }
     }
@@ -34,7 +50,7 @@ public final class AppLanguagePreferences {
 /// dependency: the same core files compile both as a Swift package and inside the iOS app.
 public enum L10n {
     private static let lock = NSLock()
-    private static var selectedLanguage = AppLanguage.english
+    private static var selectedLanguage = AppLanguage.system
     public static var language: AppLanguage {
         get { lock.lock(); defer { lock.unlock() }; return selectedLanguage }
         set { lock.lock(); defer { lock.unlock() }; selectedLanguage = newValue }
@@ -46,7 +62,7 @@ public enum L10n {
     }
     public static func text(_ italianKey: String, language: AppLanguage,
                             preferredLanguages: [String] = Locale.preferredLanguages) -> String {
-        english[italianKey] ?? italianKey
+        language.code(preferredLanguages: preferredLanguages) == "it" ? italianKey : english[italianKey] ?? italianKey
     }
     public static func format(_ italianFormat: String, _ arguments: CVarArg...) -> String {
         let selected = language

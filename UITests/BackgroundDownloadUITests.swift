@@ -137,7 +137,7 @@ final class BackgroundDownloadUITests: XCTestCase {
         server = try BackgroundReaderServer()
         app = XCUIApplication()
         app.launchArguments = ["--background-download-test", server.address, "-AppleLanguages", "(it)", "-AppleLocale", "it_IT",
-                               "-app.language.v1", "italian"]
+                               "-app.language.v2", "english"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Background download fixture"].firstMatch.waitForExistence(timeout: 15))
     }
@@ -386,7 +386,7 @@ final class BackgroundDownloadUITests: XCTestCase {
 
         // Use normal production restore, not the fixture's connect-on-launch shortcut.
         app.terminate()
-        app.launchArguments = ["-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
+        app.launchArguments = ["-AppleLanguages", "(it)", "-AppleLocale", "it_IT", "-app.language.v2", "english"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Offline reading"].firstMatch.waitForExistence(timeout: 15))
         app.buttons["Bookmarks"].tap()

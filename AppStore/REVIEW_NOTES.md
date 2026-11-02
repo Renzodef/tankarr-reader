@@ -45,9 +45,11 @@ created for this app. The demo does not expose the developer's private library.
    close the volume and reopen it to verify persistence. Switching layout or axis
    keeps the current page; existing preferences from build 5 retain their direction
    and layout with an automatic axis.
-5. The network button opens **“Connection”**. The interface is in English,
-   independent of the device language. Existing connection, bookmark and reading
-   preferences survive migration from previous Italian/system language choices.
+5. The network button opens **“Connection”**. **“App language”** offers System,
+   Italiano and English. System follows the first supported iOS language, falling
+   back to English. Change the choice and reopen the app to verify persistence.
+   Upgrading from the English-only 1.0.1 resets its forced default to System once.
+   Existing connection, downloads, bookmark and reading preferences are preserved.
    Book content and demo story titles are not translated.
 6. **“Privacy and support”** contains
    the privacy policy, public support link, and a control to erase local reading
@@ -75,8 +77,9 @@ restricted to explicit local addresses. Administrative API routes and redirects
 are not exposed. No Apple account, server account creation, or account purchase
 is implemented inside this app. No sign-in is required for the included demo.
 
-The interface is in English. The original demo stories
-and their titles remain in Italian.
+The interface is available in English and Italian, matching the Store localizations.
+The instructions above use English labels; select English in Connection if necessary.
+The original demo stories and their titles remain in Italian.
 
 ## Prima dell'invio
 

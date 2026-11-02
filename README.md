@@ -3,7 +3,7 @@
 Client nativo SwiftUI per il gateway Tankarr Reader dell'self-hosted. iOS 17+,
 iPhone e iPad; nessuna dipendenza esterna. Catalogo con ricerca e copertine,
 elenco dei libri scaricati, lettura a pagine con zoom e scorrimento continuo,
-verticale oppure orizzontale, con direzione selezionabile. Interfaccia in inglese.
+verticale oppure orizzontale, con direzione selezionabile. Interfaccia in italiano e inglese.
 L'ultima pagina letta resta sul dispositivo; i segnalibri vengono salvati sul
 server Tankarr. Capitoli e volumi possono essere scaricati sul dispositivo per
 la lettura offline. Nessuna modifica alla libreria,
@@ -54,10 +54,17 @@ salvare il segnalibro resta un'azione esplicita.
 
 ## Lingua dell'app
 
-L’interfaccia è sempre in inglese, indipendentemente dalla lingua di iOS.
-Le preferenze precedenti Sistema/Italiano e le configurazioni esportate restano
-compatibili: connessione, segnalibri, serie seguite e opzioni di lettura sono
-conservati. Titoli, libri e racconti demo mantengono la lingua dei contenuti.
+In **Connessione → Lingua dell’app** scegli **Sistema**, **Italiano** o **English**.
+Sistema usa la prima lingua supportata fra le preferenze di iOS, con inglese come
+ripiego. Il cambio è immediato, resta salvato e viene incluso nelle configurazioni
+esportate. La registrazione push comunica al server la lingua scelta; offline
+l’aggiornamento avviene al ritorno online.
+
+All’aggiornamento dalla 1.0.1, che imponeva l’inglese, si torna a Sistema una sola
+volta. Una scelta esplicita successiva viene conservata. Le preferenze Italiane
+precedenti alla 1.0.1 e le lingue nei file importati restano valide. Connessione,
+segnalibri, download e opzioni di lettura non vengono modificati. Titoli, libri e
+racconti demo mantengono la lingua dei contenuti.
 
 ## Serie seguite
 
@@ -254,7 +261,7 @@ simulatore. L'app non include password, account Apple o certificati di firma.
 
 `AppStore/metadata.json` contiene i testi italiano/inglese; `REVIEW_NOTES.md`
 le istruzioni per Apple; `SCREENSHOTS.md` la sequenza di acquisizione reale.
-La scheda Store può avere testi localizzati; l’interfaccia dell’app è in inglese.
+Le lingue dell’app corrispondono alle localizzazioni della scheda: italiano e inglese.
 La demo originale resta italiana.
 `python3 Tools/check_store_assets.py` controlla limiti dei testi, icona e
 manifest privacy incluso nel target. La schermata privacy è disponibile anche

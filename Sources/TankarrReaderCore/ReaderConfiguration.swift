@@ -11,7 +11,7 @@ public struct ReaderConfiguration: Codable, Equatable {
     public var readingOptions: [String: ReadingOptions]
     public var followedSeries: [String]
 
-    public init(profile: ServerProfile, appLanguage: AppLanguage = .english,
+    public init(profile: ServerProfile, appLanguage: AppLanguage = .system,
                 readingOptions: [String: ReadingOptions] = [:], followedSeries: [String] = []) {
         format = Self.formatName; version = 1; self.profile = profile
         self.appLanguage = appLanguage; self.readingOptions = readingOptions
