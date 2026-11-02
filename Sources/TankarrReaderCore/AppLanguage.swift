@@ -1,28 +1,19 @@
 import Foundation
 
-/// Interface language is a device preference, independent of the server and book language.
+/// English-only interface. Accept older exports without changing their server,
+/// bookmarks or reading preferences.
 public enum AppLanguage: String, Codable, CaseIterable, Identifiable {
-    case system, italian, english
+    case english
     public var id: String { rawValue }
-    public var label: String {
-        switch self {
-        case .system: return L10n.text("Sistema")
-        case .italian: return "Italiano"
-        case .english: return "English"
+    public var label: String { "English" }
+    public func code(preferredLanguages: [String] = Locale.preferredLanguages) -> String { "en" }
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        let raw = try value.decode(String.self)
+        guard ["system", "italian", "english"].contains(raw) else {
+            throw DecodingError.dataCorruptedError(in: value, debugDescription: "Unknown interface language")
         }
-    }
-
-    public func code(preferredLanguages: [String] = Locale.preferredLanguages) -> String {
-        switch self {
-        case .italian: return "it"
-        case .english: return "en"
-        case .system:
-            for language in preferredLanguages {
-                let base = language.lowercased().split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map(String.init)
-                if base == "it" || base == "en" { return base! }
-            }
-            return "en"
-        }
+        self = .english
     }
 }
 
@@ -31,7 +22,10 @@ public final class AppLanguagePreferences {
     public static let key = "app.language.v1"
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults }
     public var language: AppLanguage {
-        get { defaults.string(forKey: Self.key).flatMap(AppLanguage.init(rawValue:)) ?? .system }
+        get {
+            if defaults.string(forKey: Self.key) != "english" { defaults.set("english", forKey: Self.key) }
+            return .english
+        }
         set { defaults.set(newValue.rawValue, forKey: Self.key) }
     }
 }
@@ -40,7 +34,7 @@ public final class AppLanguagePreferences {
 /// dependency: the same core files compile both as a Swift package and inside the iOS app.
 public enum L10n {
     private static let lock = NSLock()
-    private static var selectedLanguage = AppLanguage.system
+    private static var selectedLanguage = AppLanguage.english
     public static var language: AppLanguage {
         get { lock.lock(); defer { lock.unlock() }; return selectedLanguage }
         set { lock.lock(); defer { lock.unlock() }; selectedLanguage = newValue }
@@ -52,7 +46,7 @@ public enum L10n {
     }
     public static func text(_ italianKey: String, language: AppLanguage,
                             preferredLanguages: [String] = Locale.preferredLanguages) -> String {
-        language.code(preferredLanguages: preferredLanguages) == "it" ? italianKey : english[italianKey] ?? italianKey
+        english[italianKey] ?? italianKey
     }
     public static func format(_ italianFormat: String, _ arguments: CVarArg...) -> String {
         let selected = language
@@ -62,6 +56,12 @@ public enum L10n {
     // Keys are the original Italian UI copy. Library metadata, artwork and story text
     // never pass through this catalog: changing the UI does not translate a book.
     static let english: [String: String] = [
+        "Riprova i download": "Retry downloads",
+        "Ricollegamento…": "Reconnecting…",
+        "Attiva modalità offline": "Enable offline mode",
+        "Mostra solo i libri scaricati e mette in pausa i download finché non torni online.": "Show downloaded books only and pause downloads until you go back online.",
+        "Serie seguite non disponibili offline": "Followed series are unavailable offline",
+        "Torna online per vedere le serie seguite e gestire le notifiche.": "Go online to see followed series and manage notifications.",
         "Aggiorna Tankarr": "Refresh Tankarr",
         "Tankarr aggiornato": "Tankarr refreshed",
         "Esporta configurazione…": "Export configuration…",

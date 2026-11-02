@@ -12,6 +12,7 @@ struct LibraryView: View {
     @State private var showFollowed = false
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16, alignment: .top)]
     private var filtered: [LibrarySeries] {
+        if showFollowed && model.offlineMode { return [] }
         let rows = showFollowed ? model.visibleLibrary.filter { model.followedSeries.contains($0.id) } : model.visibleLibrary
         return search.isEmpty ? rows : rows.filter { $0.title.localizedStandardContains(search) }
     }
@@ -42,7 +43,10 @@ struct LibraryView: View {
                         }
                     }.padding()
                     if filtered.isEmpty {
-                        if showFollowed && search.isEmpty {
+                        if showFollowed && model.offlineMode {
+                            ContentUnavailableView(L10n.text("Serie seguite non disponibili offline"), systemImage: "bell.slash",
+                                description: Text(L10n.text("Torna online per vedere le serie seguite e gestire le notifiche.")))
+                        } else if showFollowed && search.isEmpty {
                             ContentUnavailableView(L10n.text("Nessuna serie seguita"), systemImage: "bell",
                                 description: Text(L10n.text("Apri una serie e tocca Segui per ricevere gli avvisi dei nuovi capitoli.")))
                         } else if model.offlineMode && search.isEmpty {
@@ -416,16 +420,6 @@ struct ConnectionView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Picker(L10n.text("Lingua dell’app"), selection: Binding(
-                        get: { model.appLanguage }, set: { model.setLanguage($0) })) {
-                        ForEach(AppLanguage.allCases) { language in
-                            Text(language.label).tag(language).accessibilityIdentifier("app-language-\(language.rawValue)")
-                        }
-                    }.pickerStyle(.menu).accessibilityIdentifier("app-language")
-                } header: { Text(L10n.text("Lingua dell’app")) } footer: {
-                    Text(L10n.text("La lingua dell’interfaccia è salvata su questo dispositivo. Sistema segue la lingua preferita dell’iPhone o iPad fra italiano e inglese; le altre lingue usano l’inglese. Non cambia la lingua dei libri."))
-                }
                 Section {
                     Button(L10n.text("Esplora la libreria dimostrativa")) { Task { await model.startDemo(); dismiss() } }.disabled(model.busy)
                 } footer: { Text(L10n.text("Tre racconti originali per provare ricerca, lettura e zoom. Funziona senza account e senza connessione.")) }

@@ -40,6 +40,13 @@ public struct BackgroundDownloadQueue: Codable, Sendable {
         if let index = page.index { return job.remaining?.contains(index) == true }
         return job.remaining == nil
     }
+    /// Cancelled transfers may finish after a retry has replaced their task.
+    /// Only a failure from the currently owned task may pause the queue.
+    public func acceptsFailure(_ page: BackgroundPage, taskID: Int,
+                               currentTaskID: Int?, paused: Bool) -> Bool {
+        !paused && currentTaskID == taskID && accepts(page)
+    }
+    public func canResume(paused: Bool) -> Bool { paused && !jobs.isEmpty }
     /// Batch pages instead of waking iOS once per page. Only two connections run
     /// concurrently; the bounded batch limits session/disk overhead on big packs.
     public func next(excluding running: Set<BackgroundPage>, limit: Int = 64) -> [BackgroundPage] {

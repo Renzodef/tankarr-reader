@@ -169,7 +169,7 @@ final class BackgroundDownloadUITests: XCTestCase {
     }
     private func readyPage(_ counter: String) {
         XCTAssertTrue(app.staticTexts[counter].waitForExistence(timeout: 15))
-        waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 15)
+        waitUntil({ self.app.buttons["Bookmark"].isEnabled }, seconds: 15)
     }
     private func lastPage() {
         // Chapter navigation is tested independently of XCTest's normalized
@@ -177,8 +177,8 @@ final class BackgroundDownloadUITests: XCTestCase {
         // Physical slider direction has its own drag test on both devices.
         for _ in 0..<7 {
             if app.staticTexts["8 / 8"].exists { break }
-            waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 15)
-            app.buttons["Pagina successiva"].tap()
+            waitUntil({ self.app.buttons["Bookmark"].isEnabled }, seconds: 15)
+            app.buttons["Next page"].tap()
         }
         readyPage("8 / 8")
     }
@@ -189,7 +189,7 @@ final class BackgroundDownloadUITests: XCTestCase {
         library.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(forDuration: 0.1,
             thenDragTo: library.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)))
         waitUntil({ self.server.libraryReloads >= 1 }, seconds: 15)
-        XCTAssertFalse(app.staticTexts["Connessione non riuscita"].exists)
+        XCTAssertFalse(app.staticTexts["Connection failed"].exists)
         XCTAssertTrue(app.staticTexts["Background download fixture"].exists)
         app.buttons["connection-settings"].tap()
         let refresh = app.buttons["refresh-tankarr"]
@@ -208,13 +208,13 @@ final class BackgroundDownloadUITests: XCTestCase {
         }
         XCTAssertTrue(app.staticTexts["refresh-result"].waitForExistence(timeout: 10),
                       "Refresh feedback: \(app.staticTexts.allElementsBoundByIndex.map(\.label))")
-        XCTAssertEqual(app.staticTexts["refresh-result"].label, "Tankarr aggiornato")
+        XCTAssertEqual(app.staticTexts["refresh-result"].label, "Tankarr refreshed")
         XCTAssertEqual(server.requests.filter { $0.0 == "/v1/status" }.count, handshakes,
                        "Refreshing does not reconnect or replace a healthy session")
         let export = app.buttons["export-configuration"]
         for _ in 0..<3 { if export.isHittable { break }; form.swipeUp(velocity: .slow) }
         XCTAssertTrue(export.isHittable)
-        XCTAssertFalse(app.staticTexts["Connessione non riuscita"].exists)
+        XCTAssertFalse(app.staticTexts["Connection failed"].exists)
     }
 
     func testChapterBoundariesAndSeriesBookmarkRespectOfflineAvailability() {
@@ -222,22 +222,22 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.staticTexts["Background download fixture"].firstMatch.tap()
         app.staticTexts["Capitolo 1"].tap(); readyPage("1 / 8")
         lastPage()
-        app.buttons["Pagina successiva"].tap(); readyPage("1 / 8")
+        app.buttons["Next page"].tap(); readyPage("1 / 8")
         XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 2")
-        app.buttons["Segnalibro"].tap(); app.buttons["Salva segnalibro"].tap()
+        app.buttons["Bookmark"].tap(); app.buttons["Save bookmark"].tap()
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 1"].waitForExistence(timeout: 10))
-        app.buttons["Pagina precedente"].tap(); readyPage("8 / 8")
+        app.buttons["Previous page"].tap(); readyPage("8 / 8")
         XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 1")
         let screenshot = XCTAttachment(screenshot: app.screenshot())
         screenshot.lifetime = .keepAlways; add(screenshot)
-        XCTAssertTrue(app.buttons["Torna alla serie"].isHittable, app.debugDescription)
-        app.buttons["Torna alla serie"].tap()
+        XCTAssertTrue(app.buttons["Back to series"].isHittable, app.debugDescription)
+        app.buttons["Back to series"].tap()
         XCTAssertTrue(app.buttons["series-resume-bookmark"].waitForExistence(timeout: 10))
         app.buttons["series-resume-bookmark"].tap(); readyPage("1 / 8")
-        app.buttons["Pagina successiva"].tap(); readyPage("2 / 8")
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Next page"].tap(); readyPage("2 / 8")
+        app.buttons["Close book"].tap()
         app.buttons["series-resume-bookmark"].tap(); readyPage("1 / 8")
-        app.buttons["Chiudi libro"].tap()
+        app.buttons["Close book"].tap()
 
         app.buttons["download-bg-book-1"].tap()
         XCTAssertTrue(app.buttons["remove-download-bg-book-1"].waitForExistence(timeout: 45))
@@ -245,11 +245,11 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.staticTexts["Background download fixture"].firstMatch.tap()
         let requests = server.requests.count
         app.buttons["series-resume-bookmark"].tap()
-        XCTAssertTrue(app.alerts["Segnalibro non disponibile offline"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.alerts["Bookmark unavailable offline"].waitForExistence(timeout: 5))
         app.alerts.buttons["OK"].tap()
         app.staticTexts["Capitolo 1"].tap(); readyPage("8 / 8")
-        app.buttons["Pagina successiva"].tap()
-        XCTAssertTrue(app.alerts.staticTexts["Il capitolo successivo non è scaricato. Torna online per leggerlo."].waitForExistence(timeout: 5))
+        app.buttons["Next page"].tap()
+        XCTAssertTrue(app.alerts.staticTexts["The next chapter is not downloaded. Go online to read it."].waitForExistence(timeout: 5))
         app.alerts.buttons["OK"].tap()
         XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 1")
         XCTAssertEqual(server.requests.count, requests, "Offline boundary/resume must not fetch missing chapters")
@@ -257,7 +257,7 @@ final class BackgroundDownloadUITests: XCTestCase {
 
     func testDownloadedNeighboursAndAutomaticOfflineRecovery() {
         server.delay = 1
-        queueBooks(); assertComplete(); app.buttons["Chiudi"].tap()
+        queueBooks(); assertComplete(); app.buttons["Close"].tap()
         server.failConnections = true
         // A real socket failure switches to cached library/chapters, without
         // changing the user's explicit offline preference.
@@ -268,21 +268,21 @@ final class BackgroundDownloadUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 2")
         app.images["reader-page"].firstMatch.swipeRight(); readyPage("8 / 8")
         XCTAssertEqual(app.staticTexts["reader-book-title"].label, "Fixture 1")
-        app.buttons["Chiudi libro"].tap(); app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Offline automatico"].waitForExistence(timeout: 10))
+        app.buttons["Close book"].tap(); app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Automatically offline"].waitForExistence(timeout: 10))
         server.failConnections = false
         backgroundReader()
         app.activate()
-        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 20),
+        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 20),
             "Requests: \(server.requests.map(\.0))")
         // Manual Offline remains selected even with working network and a new foreground.
         app.buttons["offline-mode"].tap()
-        XCTAssertTrue(app.staticTexts["Lettura offline"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Offline reading"].waitForExistence(timeout: 10))
         backgroundReader()
         app.activate()
-        XCTAssertTrue(app.staticTexts["Lettura offline"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Offline reading"].waitForExistence(timeout: 10))
         app.buttons["return-online"].tap()
-        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 20))
     }
 
     func testDownloadsContinueWhileReaderIsInBackground() {
@@ -319,11 +319,11 @@ final class BackgroundDownloadUITests: XCTestCase {
         queueBooks()
         app.buttons["remove-all-downloads"].tap()
         app.buttons["confirm-remove-all-downloads"].firstMatch.tap()
-        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["No downloads"].waitForExistence(timeout: 15))
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["downloads"].waitForExistence(timeout: 20))
         app.buttons["downloads"].tap()
-        XCTAssertTrue(app.staticTexts["Nessun download"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["No downloads"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["offline-book-bg-book-1"].exists)
         XCTAssertFalse(app.buttons["offline-book-bg-book-2"].exists)
         XCTAssertFalse(app.buttons["remove-all-downloads"].exists)
@@ -343,7 +343,7 @@ final class BackgroundDownloadUITests: XCTestCase {
 
         app.buttons["pause-download-bg-book-1"].tap()
         XCTAssertTrue(app.buttons["download-bg-book-1"].waitForExistence(timeout: 10))
-        XCTAssertEqual(app.buttons["download-bg-book-1"].label, "Riprendi download")
+        XCTAssertEqual(app.buttons["download-bg-book-1"].label, "Resume download")
         XCTAssertTrue(app.staticTexts["download-state-bg-book-1"].label.contains("In pausa"))
         let savedPages = progress.value as? String
         XCTAssertNotNil(savedPages)
@@ -354,7 +354,7 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.buttons["downloads"].tap()
         XCTAssertEqual(app.progressIndicators["download-progress-bg-book-1"].value as? String, savedPages)
         XCTAssertTrue(app.buttons["download-bg-book-1"].exists)
-        app.buttons["Chiudi"].tap()
+        app.buttons["Close"].tap()
         app.staticTexts["Background download fixture"].firstMatch.tap()
         XCTAssertEqual(progress.value as? String, savedPages)
         app.buttons["download-bg-book-1"].tap()
@@ -364,7 +364,7 @@ final class BackgroundDownloadUITests: XCTestCase {
         XCTAssertFalse(progress.exists)
 
         app.buttons["remove-download-bg-book-1"].tap()
-        app.buttons["Rimuovi download"].firstMatch.tap()
+        app.buttons["Remove download"].firstMatch.tap()
         XCTAssertTrue(app.buttons["download-bg-book-1"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["remove-download-bg-book-1"].exists)
         XCTAssertTrue(app.buttons["remove-download-bg-book-2"].exists)
@@ -377,9 +377,9 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.buttons["use-offline"].tap()
         app.buttons["offline-book-bg-book-1"].tap()
         XCTAssertTrue(app.images["reader-page"].firstMatch.waitForExistence(timeout: 10))
-        app.buttons["Pagina successiva"].tap()
-        waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 10)
-        app.buttons["Segnalibro"].tap(); app.buttons["Salva segnalibro"].tap()
+        app.buttons["Next page"].tap()
+        waitUntil({ self.app.buttons["Bookmark"].isEnabled }, seconds: 10)
+        app.buttons["Bookmark"].tap(); app.buttons["Save bookmark"].tap()
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 2"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.otherElements["bookmark-sync-pending"].exists || app.staticTexts["bookmark-sync-pending"].exists)
         XCTAssertNil(server.bookmarkPage, "Offline editing must not contact the server")
@@ -388,42 +388,42 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.terminate()
         app.launchArguments = ["-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Lettura offline"].firstMatch.waitForExistence(timeout: 15))
-        app.buttons["Segnalibri"].tap()
+        XCTAssertTrue(app.staticTexts["Offline reading"].firstMatch.waitForExistence(timeout: 15))
+        app.buttons["Bookmarks"].tap()
         XCTAssertTrue(app.buttons["bookmark-background-series"].waitForExistence(timeout: 10))
         app.buttons["bookmark-background-series"].tap()
         XCTAssertTrue(app.staticTexts["Segnalibro a pagina 2"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.otherElements["bookmark-sync-pending"].exists || app.staticTexts["bookmark-sync-pending"].exists)
-        app.buttons["Chiudi libro"].tap(); app.buttons["Chiudi"].tap()
+        app.buttons["Close book"].tap(); app.buttons["Close"].tap()
 
         server.failBookmarkWrites = true
         app.buttons["offline-mode"].tap()
-        waitUntil({ self.app.buttons["offline-mode"].value as? String == "Disattiva" }, seconds: 15)
-        app.buttons["Segnalibri"].tap()
-        XCTAssertTrue(app.buttons["Aggiorna segnalibri"].waitForExistence(timeout: 10))
+        waitUntil({ self.app.buttons["offline-mode"].value as? String == "Off" }, seconds: 15)
+        app.buttons["Bookmarks"].tap()
+        XCTAssertTrue(app.buttons["Refresh bookmarks"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["bookmark-background-series"].exists)
         XCTAssertNil(server.bookmarkPage, "A failed request must keep the local edit for retry")
         server.failBookmarkWrites = false
         // Reopening online must retry without asking the reader to save again.
         app.terminate(); app.launch()
         waitUntil({ self.server.bookmarkPage == 1 }, seconds: 15)
-        XCTAssertTrue(app.buttons["Segnalibri"].waitForExistence(timeout: 15))
-        app.buttons["Segnalibri"].tap()
+        XCTAssertTrue(app.buttons["Bookmarks"].waitForExistence(timeout: 15))
+        app.buttons["Bookmarks"].tap()
         waitUntil({ !self.app.otherElements["bookmark-sync-pending"].exists && !self.app.staticTexts["bookmark-sync-pending"].exists }, seconds: 10)
-        app.buttons["Chiudi"].tap()
+        app.buttons["Close"].tap()
 
         app.buttons["offline-mode"].tap()
-        waitUntil({ self.app.buttons["offline-mode"].value as? String == "Attiva" }, seconds: 10)
-        app.buttons["Segnalibri"].tap(); app.buttons["bookmark-background-series"].tap()
-        waitUntil({ self.app.buttons["Segnalibro"].isEnabled }, seconds: 10)
-        app.buttons["Segnalibro"].tap(); app.buttons["Rimuovi segnalibro"].tap()
+        waitUntil({ self.app.buttons["offline-mode"].value as? String == "On" }, seconds: 10)
+        app.buttons["Bookmarks"].tap(); app.buttons["bookmark-background-series"].tap()
+        waitUntil({ self.app.buttons["Bookmark"].isEnabled }, seconds: 10)
+        app.buttons["Bookmark"].tap(); app.buttons["Remove bookmark"].tap()
         waitUntil({ !self.app.staticTexts["Segnalibro a pagina 2"].exists }, seconds: 10)
         XCTAssertEqual(server.bookmarkPage, 1)
-        app.buttons["Chiudi libro"].tap(); app.buttons["Chiudi"].tap()
+        app.buttons["Close book"].tap(); app.buttons["Close"].tap()
         app.buttons["offline-mode"].tap()
         waitUntil({ self.server.bookmarkPage == nil }, seconds: 15)
-        app.buttons["Segnalibri"].tap()
-        XCTAssertTrue(app.staticTexts["Nessun segnalibro"].waitForExistence(timeout: 10))
+        app.buttons["Bookmarks"].tap()
+        XCTAssertTrue(app.staticTexts["No bookmarks"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["bookmark-background-series"].exists)
     }
 }

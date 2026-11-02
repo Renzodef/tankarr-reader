@@ -7,7 +7,7 @@ final class ReaderConfigurationTests: XCTestCase {
         username: "reader", mode: .remote, instanceID: "fixture-instance")
 
     func testPortablePreferencesRoundTripWithoutCredentialsOrDeviceIdentity() throws {
-        let value = ReaderConfiguration(profile: profile, appLanguage: .italian,
+        let value = ReaderConfiguration(profile: profile, appLanguage: .english,
             readingOptions: ["book-2": ReadingOptions(direction: .rtl, layout: .continuous, axis: .horizontal)],
             followedSeries: ["series-2", "series-1"])
         let data = try value.encoded()
@@ -20,6 +20,18 @@ final class ReaderConfigurationTests: XCTestCase {
         XCTAssertTrue(imported.includesPreferences)
         XCTAssertNil(imported.password)
         XCTAssertEqual(imported.configuration.profile.mode, .remote)
+    }
+
+    func testOlderLanguageChoicesImportAsEnglishWithoutLosingPreferences() throws {
+        let value = ReaderConfiguration(profile: profile,
+            readingOptions: ["book-2": ReadingOptions(direction: .rtl, layout: .continuous, axis: .horizontal)],
+            followedSeries: ["series-1"])
+        for old in ["system", "italian"] {
+            var object = try JSONSerialization.jsonObject(with: value.encoded()) as! [String: Any]
+            object["appLanguage"] = old
+            let imported = try ImportedReaderConfiguration(data: JSONSerialization.data(withJSONObject: object))
+            XCTAssertEqual(imported.configuration, value)
+        }
     }
 
     func testLegacyConnectionFileStillImportsButPasswordNeverExports() throws {

@@ -10,8 +10,7 @@ can explicitly save or remove the server's reading bookmarks. It does
 not supply a content subscription, an online discovery service, or downloads
 from external sources. There are no purchases, advertising SDKs, or analytics.
 
-On first launch, choose **“Explore the demo library”** (Italian:
-**“Esplora la libreria dimostrativa”**) in the connection screen. This built-in
+On first launch, choose **“Explore the demo library”** in the connection screen. This built-in
 library works without an account or network connection
 and uses the same library, book-list, reading options, progress and bookmark controls
 as a connected server. All three short stories and vector illustrations were
@@ -21,14 +20,14 @@ created for this app. The demo does not expose the developer's private library.
 2. Open **“Segnali dal faro”**, then **“Volume 1”**. In paged mode, pinch or
    double-tap to zoom; use the arrows or page slider. Swipe to turn pages when
    not zoomed in; when zoomed in, dragging pans the current image. Close and
-   reopen to verify local progress. Use **“Bookmark”** (**“Segnalibro”**) to save
-   or remove a bookmark. The library's **“Bookmarks”** (**“Segnalibri”**)
+   reopen to verify local progress. Use **“Bookmark”** to save
+   or remove a bookmark. The library's **“Bookmarks”**
    button lists saved pages and opens the selected page. Demo bookmarks stay
    on the device. On a connected server, one bookmark per series is shared with
    Tankarr and other readers/devices. Page turns only update local progress;
    saving a shared bookmark requires an explicit action.
 3. **“Il giardino sospeso”** demonstrates right-to-left navigation. Open
-   **“Reading options”** (**“Opzioni di lettura”**) to select an automatic,
+   **“Reading options”** to select an automatic,
    vertical or horizontal axis. With a horizontal axis, choose automatic,
    left-to-right or right-to-left direction. This direction applies to both
    paged and continuous reading. With a vertical axis, the horizontal direction
@@ -46,21 +45,19 @@ created for this app. The demo does not expose the developer's private library.
    close the volume and reopen it to verify persistence. Switching layout or axis
    keeps the current page; existing preferences from build 5 retain their direction
    and layout with an automatic axis.
-5. The network button opens **“Connection”** (**“Connessione”**). Under
-   **“App language”** (**“Lingua dell'app”**), choose **“System”**, **“Italiano”**,
-   or **“English”**. System is the default: it selects the first supported language
-   (Italian or English) from iOS language preferences, falling back to English.
-   Changes apply immediately without resetting the connected server or reading
-   position. The setting translates the interface, not books or demo content.
-6. **“Privacy and support”** (**“Privacy e assistenza”**) contains
+5. The network button opens **“Connection”**. The interface is in English,
+   independent of the device language. Existing connection, bookmark and reading
+   preferences survive migration from previous Italian/system language choices.
+   Book content and demo story titles are not translated.
+6. **“Privacy and support”** contains
    the privacy policy, public support link, and a control to erase local reading
    positions, per-volume reading preferences and demo bookmarks. Server bookmarks are removed from the reader
-   or bookmark list. **“Disconnect”** (**“Disconnetti”**) removes saved server
+   or bookmark list. **“Disconnect”** removes saved server
    credentials, configuration and the current account's downloaded copies,
    after confirmation.
 7. Tap the download arrow next to a volume in the demo, or **Download all**
    in a series. Open **Downloads** from the library, wait for **Available
-   offline**, then choose **Use offline**. The book opens from on-device pages,
+   offline**, then choose **Enable offline mode**. The book opens from on-device pages,
    with paged/continuous reading and local progress. Close and reopen it to
    check persistence. Downloads can be paused, resumed and removed locally.
    **Reconnect to server** leaves offline mode (in demo, returns to the demo).
@@ -78,13 +75,14 @@ restricted to explicit local addresses. Administrative API routes and redirects
 are not exposed. No Apple account, server account creation, or account purchase
 is implemented inside this app. No sign-in is required for the included demo.
 
-The interface is available in Italian and English. The original demo stories
+The interface is in English. The original demo stories
 and their titles remain in Italian.
 
 ## Prima dell'invio
 
 - Verificare attivazione del programma Developer, team e firma.
-- Eseguire test su simulatore e iPhone reale; compilazione statica non basta.
+- Eseguire verify-device e la prova TestFlight su iPhone reale prima dell’invio;
+  non dichiarare eseguiti test UI su simulatore se non sono stati avviati.
 - Acquisire screenshot reali dell'app con la demo: niente libreria privata o
   immagini dell'interfaccia inventate. Vedere `SCREENSHOTS.md`.
 - Se Apple richiede un account del backend, predisporre un gateway separato

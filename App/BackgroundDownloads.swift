@@ -85,7 +85,7 @@ final class BackgroundDownloads {
             if self.finishedEvents { self.finishEvents() }
         }
     }
-    private func notify() { changed?(queue.jobs, paused) }
+    private func notify() { changed?(queue.jobs, queue.canResume(paused: paused)) }
     private func persist() async throws {
         try await store.saveBackgroundQueue(queue, account: account)
         notify()
@@ -126,11 +126,12 @@ final class BackgroundDownloads {
         try await pump()
     }
     private func stopForError(_ error: Error, book: String) async {
-        paused = true
+        paused = !queue.jobs.isEmpty
         running.values.forEach { $0.cancel() }; running = [:]
         // Never clear queued chapters on a transport failure or suspension.
         // Their intent stays on disk and start() retries on the next foreground.
-        notify(); failed?(book, error)
+        notify()
+        if queue.jobs.contains(where: { $0.listing.id == book }) { failed?(book, error) }
     }
     private func pump() async throws {
         guard !paused else { return }
@@ -166,8 +167,11 @@ final class BackgroundDownloads {
     fileprivate func received(_ page: BackgroundPage?, taskID: Int, file: URL?, response: URLResponse?, original: URL?, error: Error?) {
         operation {
             defer { if let file { try? FileManager.default.removeItem(at: file) } }
-            guard let page, self.queue.accepts(page), !self.paused else { return }
-            if let current = self.running[page], current.taskIdentifier != taskID { return }
+            // On a background relaunch iOS may deliver an already completed
+            // task that allTasks no longer lists. Accept that saved page while
+            // still rejecting a replaced task or an explicitly paused queue.
+            guard let page, !self.paused, self.queue.accepts(page),
+                  self.running[page]?.taskIdentifier == taskID || self.running[page] == nil else { return }
             self.running[page] = nil
             do {
                 if let error { throw error }
@@ -207,7 +211,8 @@ final class BackgroundDownloads {
     }
     fileprivate func failedTask(_ page: BackgroundPage?, taskID: Int, error: Error) {
         operation {
-            guard let page, self.queue.accepts(page), self.running[page]?.taskIdentifier == taskID, !self.paused else { return }
+            guard let page, self.queue.acceptsFailure(page, taskID: taskID,
+                currentTaskID: self.running[page]?.taskIdentifier, paused: self.paused) else { return }
             await self.stopForError(error, book: page.book)
         }
     }

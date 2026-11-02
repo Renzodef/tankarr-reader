@@ -15,7 +15,6 @@ struct TankarrReaderApp: App {
                 .task { await model.restore() }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
-                        model.refreshSystemLanguage()
                         Task { await model.becameActive() }
                     }
                 }
@@ -84,7 +83,7 @@ final class AppModel: ObservableObject {
     @Published var showConnection = false
     @Published private var endpointHost: String?
     @Published var isDemo = false
-    @Published private(set) var appLanguage = AppLanguage.system
+    @Published private(set) var appLanguage = AppLanguage.english
     @Published var bookmarks: [ReaderBookmark] = []
     @Published var bookmarksLoading = false
     @Published var bookmarkBusy = false
@@ -170,9 +169,6 @@ final class AppModel: ObservableObject {
         L10n.language = language
         languagePreferences.language = language
         appLanguage = language
-    }
-    func refreshSystemLanguage() {
-        if appLanguage == .system { objectWillChange.send() }
     }
     func restore() async {
         guard !restored else { return }; restored = true

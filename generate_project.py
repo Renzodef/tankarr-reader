@@ -25,7 +25,7 @@ def main():
     for name in sources + resources + ui_sources:
         if name == "App/InfoPlist.strings":
             children = []
-            for language in ("it", "en"):
+            for language in ("en",):
                 path = f"App/{language}.lproj/InfoPlist.strings"
                 children.append(put(path, f'isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = {language}; path = {json.dumps(path)}; sourceTree = "<group>";'))
             refs.append(put(name, f'isa = PBXVariantGroup; children = ({",".join(children)},); name = InfoPlist.strings; sourceTree = "<group>";'))
@@ -79,7 +79,7 @@ def main():
         productType = "com.apple.product-type.bundle.ui-testing";''')
     put("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 1600; }};
         buildConfigurationList = {ident("projectConfigs")}; compatibilityVersion = "Xcode 14.0";
-        developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (it,en,Base,);
+        developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,);
         mainGroup = {ident("root")}; productRefGroup = {ident("products")}; projectDirPath = "";
         projectRoot = ""; targets = ({ident("target")},{ident("uiTarget")},);''')
     folder = ROOT / "TankarrReader.xcodeproj"

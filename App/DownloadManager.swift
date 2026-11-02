@@ -30,6 +30,7 @@ final class DownloadManager: ObservableObject {
         store = OfflineStore(root: root)
     }
     var totalBytes: Int64 { items.reduce(0) { $0 + $1.bytes } }
+    var canResumeBackgroundQueue: Bool { backgroundPaused && !backgroundJobs.isEmpty }
     func item(_ id: String) -> OfflineDownload? { items.first { $0.id == id } }
     func isQueued(_ id: String) -> Bool { activeID == id || (!backgroundPaused && queuedIDs.contains(id)) }
     /// Includes durable jobs waiting for metadata or paused by a network error.
@@ -83,6 +84,7 @@ final class DownloadManager: ObservableObject {
             background = engine
         }
         if let completion { background?.attachEvents(completion) }
+        for job in backgroundJobs { failures[job.listing.id] = nil }
         await background?.start(api: api)
     }
     func reload() async {
