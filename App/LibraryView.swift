@@ -421,6 +421,16 @@ struct ConnectionView: View {
         NavigationStack {
             Form {
                 Section {
+                    Picker(L10n.text("Lingua dell’app"), selection: Binding(
+                        get: { model.appLanguage }, set: { model.setLanguage($0) })) {
+                        ForEach(AppLanguage.allCases) { language in
+                            Text(language.label).tag(language).accessibilityIdentifier("app-language-\(language.rawValue)")
+                        }
+                    }.pickerStyle(.menu).accessibilityIdentifier("app-language")
+                } header: { Text(L10n.text("Lingua dell’app")) } footer: {
+                    Text(L10n.text("La lingua dell’interfaccia è salvata su questo dispositivo. Sistema segue la lingua preferita dell’iPhone o iPad fra italiano e inglese; le altre lingue usano l’inglese. Non cambia la lingua dei libri."))
+                }
+                Section {
                     Button(L10n.text("Esplora la libreria dimostrativa")) { Task { await model.startDemo(); dismiss() } }.disabled(model.busy)
                 } footer: { Text(L10n.text("Tre racconti originali per provare ricerca, lettura e zoom. Funziona senza account e senza connessione.")) }
                 Section(L10n.text("Server")) {

@@ -34,10 +34,17 @@ def main():
     assert any(item["NSPrivacyAccessedAPIType"] == "NSPrivacyAccessedAPICategoryUserDefaults"
                and "CA92.1" in item["NSPrivacyAccessedAPITypeReasons"] for item in privacy["NSPrivacyAccessedAPITypes"])
     project = (ROOT / "TankarrReader.xcodeproj/project.pbxproj").read_text()
+    with (ROOT / "App/Info.plist").open("rb") as source:
+        info = plistlib.load(source)
+    store_languages = {locale.split("-")[0] for locale in metadata["localizations"]}
+    assert set(info["CFBundleLocalizations"]) == store_languages, "App languages must match localized Store listings"
+    for language in store_languages:
+        resource = f"App/{language}.lproj/InfoPlist.strings"
+        assert (ROOT / resource).is_file() and resource in project, f"Missing bundled system permission localization: {language}"
     assert 'App/PrivacyInfo.xcprivacy' in project, "Privacy manifest must be included in the app target"
     assert any(item["NSPrivacyAccessedAPIType"] == "NSPrivacyAccessedAPICategoryDiskSpace"
                and "E174.1" in item["NSPrivacyAccessedAPITypeReasons"] for item in privacy["NSPrivacyAccessedAPITypes"])
-    print("Store metadata, opaque 1024px icon and bundled privacy manifest: OK")
+    print("Store metadata, matching app languages, opaque 1024px icon and bundled privacy manifest: OK")
 
 
 if __name__ == "__main__":

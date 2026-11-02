@@ -22,16 +22,20 @@ final class ReaderConfigurationTests: XCTestCase {
         XCTAssertEqual(imported.configuration.profile.mode, .remote)
     }
 
-    func testOlderLanguageChoicesImportAsEnglishWithoutLosingPreferences() throws {
-        let value = ReaderConfiguration(profile: profile,
-            readingOptions: ["book-2": ReadingOptions(direction: .rtl, layout: .continuous, axis: .horizontal)],
-            followedSeries: ["series-1"])
-        for old in ["system", "italian"] {
-            var object = try JSONSerialization.jsonObject(with: value.encoded()) as! [String: Any]
-            object["appLanguage"] = old
-            let imported = try ImportedReaderConfiguration(data: JSONSerialization.data(withJSONObject: object))
+    func testAllLanguageChoicesRoundTripWithoutLosingPreferences() throws {
+        for language in AppLanguage.allCases {
+            let value = ReaderConfiguration(profile: profile, appLanguage: language,
+                readingOptions: ["book-2": ReadingOptions(direction: .rtl, layout: .continuous, axis: .horizontal)],
+                followedSeries: ["series-1"])
+            let imported = try ImportedReaderConfiguration(data: value.encoded())
             XCTAssertEqual(imported.configuration, value)
         }
+    }
+
+    func testUnknownLanguageDoesNotSilentlyReplaceImportedPreferences() throws {
+        var object = try JSONSerialization.jsonObject(with: ReaderConfiguration(profile: profile).encoded()) as! [String: Any]
+        object["appLanguage"] = "unsupported"
+        XCTAssertThrowsError(try ImportedReaderConfiguration(data: JSONSerialization.data(withJSONObject: object)))
     }
 
     func testLegacyConnectionFileStillImportsButPasswordNeverExports() throws {

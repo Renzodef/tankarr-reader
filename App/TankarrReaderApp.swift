@@ -83,7 +83,7 @@ final class AppModel: ObservableObject {
     @Published var showConnection = false
     @Published private var endpointHost: String?
     @Published var isDemo = false
-    @Published private(set) var appLanguage = AppLanguage.english
+    @Published private(set) var appLanguage = AppLanguage.system
     @Published var bookmarks: [ReaderBookmark] = []
     @Published var bookmarksLoading = false
     @Published var bookmarkBusy = false
@@ -151,6 +151,7 @@ final class AppModel: ObservableObject {
         }
     }
     func becameActive() async {
+        if appLanguage == .system { objectWillChange.send() }
         if automaticOffline, networkAvailable != false { await reconnect() }
         await resumeBackgroundDownloads()
         await refreshBookmarks()
@@ -169,6 +170,7 @@ final class AppModel: ObservableObject {
         L10n.language = language
         languagePreferences.language = language
         appLanguage = language
+        Task { await ReaderPush.shared.synchronize() }
     }
     func restore() async {
         guard !restored else { return }; restored = true

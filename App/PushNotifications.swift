@@ -47,11 +47,17 @@ final class ReaderPush: NSObject, ObservableObject, UNUserNotificationCenterDele
             return
         }
         guard let token else { UIApplication.shared.registerForRemoteNotifications(); return }
-        let stamp = [model.profile.instanceID ?? "", model.profile.username, token, model.appLanguage.code()].joined(separator: "\n")
+        let language = model.appLanguage.code()
+        let stamp = [model.profile.instanceID ?? "", model.profile.username, token, language].joined(separator: "\n")
         guard stamp != lastRegistration else { return }
         do {
-            try await api.registerPush(device: deviceID, token: token, environment: environment, language: model.appLanguage.code())
+            try await api.registerPush(device: deviceID, token: token, environment: environment, language: language)
             guard api === model.api else { return }
+            if language != model.appLanguage.code() {
+                lastRegistration = nil
+                await synchronize()
+                return
+            }
             lastRegistration = stamp; notice = nil
         } catch { notice = L10n.text("Registrazione notifiche in attesa. Riprova tornando online.") }
     }

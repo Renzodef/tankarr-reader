@@ -25,7 +25,7 @@ def main():
     for name in sources + resources + ui_sources:
         if name == "App/InfoPlist.strings":
             children = []
-            for language in ("en",):
+            for language in ("en", "it"):
                 path = f"App/{language}.lproj/InfoPlist.strings"
                 children.append(put(path, f'isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = {language}; path = {json.dumps(path)}; sourceTree = "<group>";'))
             refs.append(put(name, f'isa = PBXVariantGroup; children = ({",".join(children)},); name = InfoPlist.strings; sourceTree = "<group>";'))
@@ -49,7 +49,7 @@ def main():
         project += ' DEBUG_INFORMATION_FORMAT = dwarf; SWIFT_OPTIMIZATION_LEVEL = "-Onone";' if config == "Debug" else ' DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule;'
         put("project:" + config, f"isa = XCBuildConfiguration; buildSettings = {{ {project} }}; name = {config};")
         target = '''PRODUCT_NAME = "Tankarr Reader"; PRODUCT_BUNDLE_IDENTIFIER = app.tankarr.reader;
-            CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0.1;
+            CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0.2;
             INFOPLIST_FILE = App/Info.plist; GENERATE_INFOPLIST_FILE = NO;
             TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
             SUPPORTS_MACCATALYST = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -79,7 +79,7 @@ def main():
         productType = "com.apple.product-type.bundle.ui-testing";''')
     put("project", f'''isa = PBXProject; attributes = {{ LastUpgradeCheck = 1600; }};
         buildConfigurationList = {ident("projectConfigs")}; compatibilityVersion = "Xcode 14.0";
-        developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,);
+        developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,it,Base,);
         mainGroup = {ident("root")}; productRefGroup = {ident("products")}; projectDirPath = "";
         projectRoot = ""; targets = ({ident("target")},{ident("uiTarget")},);''')
     folder = ROOT / "TankarrReader.xcodeproj"

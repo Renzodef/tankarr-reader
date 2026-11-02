@@ -5,7 +5,7 @@ final class ReaderUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
-        app.launchArguments = ["--demo", "-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
+        app.launchArguments = ["--demo", "-AppleLanguages", "(it)", "-AppleLocale", "it_IT", "-app.language.v2", "english"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.waitForExistence(timeout: 15))
 
@@ -446,18 +446,37 @@ final class ReaderUITests: XCTestCase {
         setReadingOptions()
     }
 
-    func testEnglishInterfaceWithItalianDeviceAndLegacyPreference() {
+    func testSystemItalianAndManualEnglishSwitchPreservesDemo() {
         app.terminate()
-        app.launchArguments += ["-app.language.v1", "italian"]
+        app.launchArguments = ["--demo", "-AppleLanguages", "(it)", "-AppleLocale", "it_IT", "-app.language.v2", "system"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Segnali dal faro"].exists, "Books keep their content language")
         app.buttons["connection-settings"].tap()
-        XCTAssertFalse(app.buttons["app-language"].exists, "English-only interface needs no language picker")
+        app.buttons["app-language"].tap()
+        app.buttons["app-language-english"].tap()
+        XCTAssertTrue(app.navigationBars["Connection"].waitForExistence(timeout: 5))
         app.buttons["Close"].tap()
+        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 5))
         app.terminate()
+        // Remove the launch-domain override to test the actual persisted choice.
+        app.launchArguments = ["--demo", "-AppleLanguages", "(it)", "-AppleLocale", "it_IT"]
         app.launch()
         XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["On-device demo"].exists, "Migration preserves the connection")
+        XCTAssertTrue(app.staticTexts["On-device demo"].exists, "Switching language preserves the connection")
+        app.buttons["connection-settings"].tap()
+        app.buttons["app-language"].tap()
+        app.buttons["app-language-italian"].tap()
+        XCTAssertTrue(app.navigationBars["Connessione"].waitForExistence(timeout: 5))
+        app.buttons["Chiudi"].tap()
+        XCTAssertTrue(app.staticTexts["Libreria in sola lettura"].waitForExistence(timeout: 5))
+    }
+
+    func testUnsupportedSystemLanguageFallsBackToEnglish() {
+        app.terminate()
+        app.launchArguments = ["--demo", "-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP", "-app.language.v2", "system"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Read-only library"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Segnali dal faro"].exists)
     }
 }
