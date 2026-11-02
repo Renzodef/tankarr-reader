@@ -25,7 +25,11 @@ extension AppModel {
             let items = try await client.follows()
             guard client === api, !isDemo, !offlineMode else { return }
             followedSeries = Set(items.map(\.seriesId)); cacheFollows(); followingError = nil
-        } catch { if client === api { followingError = L10n.text("Impossibile aggiornare le serie seguite. Riprova.") } }
+        } catch {
+            if client === api, !Task.isCancelled, !ReaderCancellation.isCancellation(error) {
+                followingError = L10n.text("Impossibile aggiornare le serie seguite. Riprova.")
+            }
+        }
     }
     func toggleFollowing(_ series: String) async {
         guard canFollowSeries, !followingBusy.contains(series) else { return }
@@ -43,5 +47,23 @@ extension AppModel {
             followedSeries = Set(items.map(\.seriesId)); cacheFollows()
             if following { await ReaderPush.shared.requestPermission() }
         } catch { if client === api { followingError = L10n.text("Impossibile modificare le serie seguite. Riprova.") } }
+    }
+
+    func mergeFollowedSeries(_ series: [String]) async {
+        guard canFollowSeries, !isDemo, let client = api else { return }
+        let available = Set(library.map(\.id))
+        for id in Set(series).intersection(available).subtracting(followedSeries).sorted() {
+            guard !Task.isCancelled, client === api else { return }
+            do {
+                let items = try await client.setFollowing(true, series: id)
+                guard client === api else { return }
+                followedSeries = Set(items.map(\.seriesId)); cacheFollows()
+            } catch {
+                if !Task.isCancelled { followingError = L10n.text("Impossibile ripristinare tutte le serie seguite. Reimporta la configurazione per riprovare.") }
+                return
+            }
+        }
+        // iOS notification permission belongs to this device and is never imported.
+        await ReaderPush.shared.synchronize()
     }
 }

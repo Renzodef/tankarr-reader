@@ -78,6 +78,8 @@ final class AppModel: ObservableObject {
     @Published var api: ReaderAPI?
     @Published var library: [LibrarySeries] = []
     @Published var busy = false
+    @Published var refreshing = false
+    @Published var refreshNotice: String?
     @Published private var connectionError: Error?
     @Published var showConnection = false
     @Published private var endpointHost: String?
@@ -224,12 +226,14 @@ final class AppModel: ObservableObject {
         guard !offlineMode, !isDemo else { return }
         if let api { await downloads.configureBackground(api: api); await downloads.reload() }
     }
-    func connect(_ newProfile: ServerProfile, password: String) async {
-        guard !busy, !switchingOffline else { return }; busy = true; connectionError = nil
+    @discardableResult
+    func connect(_ newProfile: ServerProfile, password: String) async -> Bool {
+        guard !busy, !switchingOffline, !Task.isCancelled else { return false }; busy = true; connectionError = nil
         defer { busy = false }
         do {
             let (client, status) = try await ReaderAPI.connect(profile: newProfile, password: password)
             let result: LibraryResponse = try await client.get("/v1/library")
+            try Task.checkCancellation()
             try PasswordStore.save(password)
             var accepted = newProfile; accepted.instanceID = status.instanceId
             if (profile.instanceID != accepted.instanceID || profile.username != accepted.username), let previous = api {
@@ -257,7 +261,9 @@ final class AppModel: ObservableObject {
             await refreshBookmarks()
             await refreshFollows()
             await ReaderPush.shared.synchronize()
+            return true
         } catch {
+            guard !Task.isCancelled, !ReaderCancellation.isCancellation(error) else { return false }
             connectionError = error
             // A failed attempt to connect to another account must not change
             // the current account's mode or its pending bookmark journal.
@@ -269,12 +275,47 @@ final class AppModel: ObservableObject {
             if api == nil, !downloads.items.isEmpty {
                 offlineMode = true; library = downloadedSeries; showConnection = false
             }
+            return false
         }
     }
     func refresh() async {
+        guard !busy, !refreshing, !switchingOffline, !Task.isCancelled else { return }
         // Pull-to-refresh while offline must not silently reconnect.
         if offlineMode { await downloads.reload(); await restoreCachedBookmarks(); return }
-        await reconnect()
+        if isDemo { refreshNotice = L10n.text("Tankarr aggiornato"); return }
+        guard let client = api else { await reconnect(); return }
+        refreshing = true; refreshNotice = nil
+        defer { refreshing = false }
+        do {
+            let result: LibraryResponse = try await client.get("/v1/library", reload: true)
+            try Task.checkCancellation()
+            guard client === api, !offlineMode else { return }
+            library = result.items; covers.removeAllObjects(); connectionError = nil
+            await refreshBookmarks(); await refreshFollows()
+            refreshNotice = L10n.text("Tankarr aggiornato")
+        } catch {
+            guard !Task.isCancelled, !ReaderCancellation.isCancellation(error), client === api else { return }
+            if OfflineConnectivity.isReachabilityFailure(error) {
+                // Only an actual network change requires selecting LAN/HTTPS again.
+                await reconnect()
+            } else { connectionError = error }
+        }
+    }
+
+    func configuration() -> ReaderConfiguration {
+        ReaderConfiguration(profile: profile, appLanguage: appLanguage,
+            readingOptions: readingPreferences.snapshot(instance: progressInstance),
+            followedSeries: Array(followedSeries))
+    }
+
+    func applyConfiguration(_ imported: ImportedReaderConfiguration) async {
+        guard imported.includesPreferences else { return }
+        let value = imported.configuration
+        setLanguage(value.appLanguage)
+        // Per-book choices and follows must never cross a server/account boundary.
+        guard value.matchesAccount(profile), !isDemo, !offlineMode else { return }
+        try? readingPreferences.merge(value.readingOptions, instance: progressInstance)
+        await mergeFollowedSeries(value.followedSeries)
     }
     func reconnect() async {
         if isDemo { await startDemo(); return }

@@ -114,6 +114,24 @@ public final class ReadingPreferences {
         }
     }
 
+    public func snapshot(instance: String) -> [String: ReadingOptions] {
+        let scope = prefix + Data(instance.utf8).base64EncodedString() + "."
+        var result: [String: ReadingOptions] = [:]
+        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix(scope) {
+            guard let raw = Data(base64Encoded: String(key.dropFirst(scope.count))),
+                  let book = String(data: raw, encoding: .utf8), (try? Endpoint.identifier(book)) != nil,
+                  let data = value as? Data,
+                  let options = try? JSONDecoder().decode(ReadingOptions.self, from: data) else { continue }
+            result[book] = options
+        }
+        return result
+    }
+
+    public func merge(_ options: [String: ReadingOptions], instance: String) throws {
+        for book in options.keys { _ = try Endpoint.identifier(book) }
+        for (book, value) in options { save(value, book: book, instance: instance) }
+    }
+
     public func clear() {
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
             defaults.removeObject(forKey: key)
