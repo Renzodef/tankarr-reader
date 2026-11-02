@@ -328,7 +328,13 @@ def test_signing_profile_uuid_retains_exact_case(profile_id):
         "UUID": profile_id,
         "TeamIdentifier": [team],
         "ExpirationDate": now + timedelta(days=1),
-        "Entitlements": {"application-identifier": f"{team}.{ci.BUNDLE_ID}", "get-task-allow": False},
+        "Entitlements": {"application-identifier": f"{team}.{ci.BUNDLE_ID}", "get-task-allow": False, "aps-environment": "production"},
         "DeveloperCertificates": [certificate.public_bytes(serialization.Encoding.DER)],
     }
     assert ci.validate_signing(profile, certificate, team) == profile_id
+    profile["Entitlements"]["aps-environment"] = "development"
+    with pytest.raises(ValueError, match="App Store distribution profile"):
+        ci.validate_signing(profile, certificate, team)
+    del profile["Entitlements"]["aps-environment"]
+    with pytest.raises(ValueError, match="App Store distribution profile"):
+        ci.validate_signing(profile, certificate, team)

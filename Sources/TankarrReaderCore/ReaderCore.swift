@@ -80,17 +80,21 @@ public enum Endpoint {
             (numbers[0] == 192 && numbers[1] == 168)
     }
     public static func identifier(_ value: String) throws -> String {
-        guard value.range(of: "^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$", options: .regularExpression) != nil else { throw ReaderError.invalidIdentifier }
+        guard value.range(of: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$", options: .regularExpression) == value.startIndex..<value.endIndex else { throw ReaderError.invalidIdentifier }
         return value
     }
     public static func request(base: URL, path: String, username: String, password: String, timeout: TimeInterval = 35,
                                method: String = "GET", jsonBody: Data? = nil) throws -> URLRequest {
         _ = try validate(base.absoluteString)
-        let readable = path.range(of: "^/v1/(status|library|bookmarks|series/[A-Za-z0-9_-]+(/cover)?|books/[A-Za-z0-9_-]+(/pages/[0-9]+)?)$", options: .regularExpression) != nil
-        let bookmark = path.range(of: "^/v1/series/[A-Za-z0-9_-]+/bookmark$", options: .regularExpression) != nil
+        let id = "[A-Za-z0-9][A-Za-z0-9_.-]{0,159}"
+        let readable = path.range(of: "^/v1/(status|library|bookmarks|follows|series/\(id)(/cover)?|books/\(id)(/pages/[0-9]+)?)$", options: .regularExpression) != nil
+        let bookmark = path.range(of: "^/v1/series/\(id)/bookmark$", options: .regularExpression) != nil
+        let follow = path.range(of: "^/v1/series/\(id)/follow$", options: .regularExpression) != nil
+        let device = path.range(of: "^/v1/notifications/devices/[0-9a-fA-F-]{36}$", options: .regularExpression) != nil
+        let writable = bookmark || follow || device
         guard (method == "GET" && readable && jsonBody == nil) ||
-              (method == "PUT" && bookmark && jsonBody != nil) ||
-              (method == "DELETE" && bookmark && jsonBody == nil) else { throw ReaderError.invalidIdentifier }
+              (method == "PUT" && writable && jsonBody != nil) ||
+              (method == "DELETE" && writable && jsonBody == nil) else { throw ReaderError.invalidIdentifier }
         guard !username.isEmpty, !password.isEmpty, !username.contains(":"), !username.contains("\n"), !username.contains("\r") else { throw ReaderError.invalidAccount }
         guard var parts = URLComponents(url: base, resolvingAgainstBaseURL: false) else { throw ReaderError.invalidAddress }
         parts.path = parts.path + path
@@ -116,6 +120,8 @@ public struct ReaderStatus: Decodable {
     public let readOnly: Bool
     public let instanceId: String
     public let readingStateWritable: Bool?
+    public let followingWritable: Bool?
+    public let pushNotificationsAvailable: Bool?
 }
 public struct BookmarksResponse: Decodable { public let items: [ReaderBookmark] }
 /// Tankarr stores one explicit reading bookmark per series, shared by its readers.

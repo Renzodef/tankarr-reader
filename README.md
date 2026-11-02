@@ -63,6 +63,20 @@ subito e viene ricordato sul dispositivo, senza perdere connessione o posizione
 di lettura. Cambia i comandi e i messaggi dell'app; non traduce titoli, libri o
 racconti demo, che restano nella lingua dei contenuti.
 
+## Serie seguite
+
+**Segui la serie** nella scheda abilita gli avvisi per i nuovi capitoli di
+quella serie; la campanella nella libreria filtra le **Serie seguite**. La
+selezione è condivisa sullo stesso account e distinta dai segnalibri. Il primo
+Segui chiede il permesso iOS; se negato, la scheda permette di aprire le
+impostazioni. Servono un gateway con push configurate e una build compatibile.
+Gli avvisi arrivano quando il nuovo capitolo è stato importato in libreria,
+anche ad app chiusa, senza notificare i capitoli già presenti. Toccare l'avviso
+apre la serie. Offline la selezione è consultabile, ma si modifica online.
+La demo prova il Segui solo sul dispositivo e non invia notifiche.
+
+Configurazione e verifiche: [Serie seguite e push](docs/FOLLOWING-NOTIFICATIONS.md).
+
 ## Segnalibri e ripresa
 
 Il pulsante **Segnalibri** nella libreria mostra i segnalibri condivisi con

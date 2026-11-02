@@ -22,7 +22,15 @@ def main():
     with (ROOT / "App/PrivacyInfo.xcprivacy").open("rb") as source:
         privacy = plistlib.load(source)
     assert privacy["NSPrivacyTracking"] is False
-    assert privacy["NSPrivacyCollectedDataTypes"] == []
+    collected = privacy["NSPrivacyCollectedDataTypes"]
+    assert {item["NSPrivacyCollectedDataType"] for item in collected} == {
+        "NSPrivacyCollectedDataTypeUserID", "NSPrivacyCollectedDataTypeDeviceID",
+        "NSPrivacyCollectedDataTypeOtherUserContent",
+    }
+    assert all(item["NSPrivacyCollectedDataTypeTracking"] is False
+               and item["NSPrivacyCollectedDataTypeLinked"] is True
+               and item["NSPrivacyCollectedDataTypePurposes"] == ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]
+               for item in collected)
     assert any(item["NSPrivacyAccessedAPIType"] == "NSPrivacyAccessedAPICategoryUserDefaults"
                and "CA92.1" in item["NSPrivacyAccessedAPITypeReasons"] for item in privacy["NSPrivacyAccessedAPITypes"])
     project = (ROOT / "TankarrReader.xcodeproj/project.pbxproj").read_text()

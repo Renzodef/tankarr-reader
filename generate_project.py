@@ -54,6 +54,8 @@ def main():
             TARGETED_DEVICE_FAMILY = "1,2"; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
             SUPPORTS_MACCATALYST = NO; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
             ENABLE_USER_SCRIPT_SANDBOXING = YES; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";'''
+        target += ' CODE_SIGN_ENTITLEMENTS = App/Reader.entitlements;'
+        target += ' APNS_ENVIRONMENT = development;' if config == "Debug" else ' APNS_ENVIRONMENT = production;'
         if config == "Debug":
             target += ' SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";'
         put("target:" + config, f"isa = XCBuildConfiguration; buildSettings = {{ {target} }}; name = {config};")

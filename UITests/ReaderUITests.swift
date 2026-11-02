@@ -117,6 +117,27 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
     }
 
+    func testFollowedSeriesFilterAndPersistence() {
+        app.staticTexts["Segnali dal faro"].firstMatch.tap()
+        let button = app.buttons["series-follow"]
+        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        if button.value as? String == "Attiva" { button.tap() }
+        button.tap()
+        XCTAssertEqual(button.value as? String, "Attiva")
+        app.terminate(); app.launch()
+        let filter = app.buttons["followed-series-filter"]
+        XCTAssertTrue(filter.waitForExistence(timeout: 10))
+        filter.tap()
+        XCTAssertTrue(app.staticTexts["Segnali dal faro"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Atlante delle nuvole"].firstMatch.exists)
+        app.staticTexts["Segnali dal faro"].firstMatch.tap()
+        let followed = app.buttons["series-follow"]
+        XCTAssertTrue(followed.waitForExistence(timeout: 10))
+        XCTAssertEqual(followed.value as? String, "Attiva")
+        followed.tap()
+        XCTAssertEqual(followed.value as? String, "Disattiva")
+    }
+
     func testSliderFollowsHorizontalDirectionAndVerticalStartsFromLeft() {
         app.staticTexts["Segnali dal faro"].firstMatch.tap(); openBook()
         for (direction, axis) in [("rtl", "horizontal"), ("ltr", "horizontal"), ("rtl", "vertical")] {

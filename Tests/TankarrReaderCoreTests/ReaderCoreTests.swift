@@ -26,7 +26,7 @@ final class ReaderCoreTests: XCTestCase {
         for path in ["/api/settings", "/api/auth/api-key", "//other.example/v1/library", "/v1/library?fresh=true", "/v1/books/a/../settings"] {
             XCTAssertThrowsError(try Endpoint.request(base: base, path: path, username: "reader", password: "fixture-password"))
         }
-        for id in ["..", "a/b", "%2e", "a?x", "a#x"] { XCTAssertThrowsError(try Endpoint.identifier(id)) }
+        for id in ["..", "a/b", "%2e", "a?x", "a#x", "valid\n"] { XCTAssertThrowsError(try Endpoint.identifier(id)) }
         let request = try Endpoint.request(base: base, path: "/v1/books/book-123/pages/0", username: "reader", password: "fixture-password")
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertNil(request.httpBody)
@@ -36,6 +36,16 @@ final class ReaderCoreTests: XCTestCase {
     func testProfileDoesNotSerializePassword() throws {
         let data = try JSONEncoder().encode(ServerProfile(remoteAddress: "https://reader.example.org", username: "reader"))
         XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("password"))
+    }
+    func testProviderIdentifiersWithDotsRemainSingleSafePathComponents() throws {
+        let base = try Endpoint.validate("https://reader.example.org")
+        XCTAssertEqual(try Endpoint.identifier("provider.series"), "provider.series")
+        let request = try Endpoint.request(base: base, path: "/v1/books/provider.chapter-373/pages/0",
+            username: "reader", password: "fixture-password")
+        XCTAssertEqual(request.url?.path, "/v1/books/provider.chapter-373/pages/0")
+        for path in ["/v1/books/../pages/0", "/v1/series/../bookmark", "/v1/books/.hidden/pages/0"] {
+            XCTAssertThrowsError(try Endpoint.request(base: base, path: path, username: "reader", password: "fixture-password"))
+        }
     }
     func testOnlyBookmarkMutationsArePermittedAndCarryCSRFHeader() throws {
         let base = try Endpoint.validate("https://reader.example.org")

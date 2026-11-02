@@ -9,9 +9,11 @@ struct LibraryView: View {
     @State private var showDownloads = false
     @State private var path: [LibrarySeries] = []
     @State private var pendingSeries: String?
+    @State private var showFollowed = false
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16, alignment: .top)]
     private var filtered: [LibrarySeries] {
-        search.isEmpty ? model.visibleLibrary : model.visibleLibrary.filter { $0.title.localizedStandardContains(search) }
+        let rows = showFollowed ? model.visibleLibrary.filter { model.followedSeries.contains($0.id) } : model.visibleLibrary
+        return search.isEmpty ? rows : rows.filter { $0.title.localizedStandardContains(search) }
     }
     var body: some View {
         NavigationStack(path: $path) {
@@ -40,7 +42,10 @@ struct LibraryView: View {
                         }
                     }.padding()
                     if filtered.isEmpty {
-                        if model.offlineMode && search.isEmpty {
+                        if showFollowed && search.isEmpty {
+                            ContentUnavailableView(L10n.text("Nessuna serie seguita"), systemImage: "bell",
+                                description: Text(L10n.text("Apri una serie e tocca Segui per ricevere gli avvisi dei nuovi capitoli.")))
+                        } else if model.offlineMode && search.isEmpty {
                             ContentUnavailableView(L10n.text("Nessun download"), systemImage: "arrow.down.circle",
                                 description: Text(L10n.text("Disattiva Offline per scegliere i libri da scaricare.")))
                         } else { ContentUnavailableView.search(text: search) }
@@ -52,6 +57,16 @@ struct LibraryView: View {
             .refreshable { await model.refresh() }
             .navigationDestination(for: LibrarySeries.self) { SeriesView(series: $0) }
             .toolbar {
+                if model.followingWritable || model.isDemo || !model.followedSeries.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showFollowed.toggle() } label: {
+                            Image(systemName: showFollowed ? "bell.fill" : "bell")
+                                .padding(5).background(showFollowed ? Color.orange.opacity(0.2) : .clear, in: Circle())
+                        }.accessibilityLabel(L10n.text("Serie seguite"))
+                            .accessibilityValue(L10n.text(showFollowed ? "Attiva" : "Disattiva"))
+                            .accessibilityIdentifier("followed-series-filter")
+                    }
+                }
                 if model.canBrowse {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -94,6 +109,9 @@ struct LibraryView: View {
                 }.foregroundStyle(.secondary).padding(.horizontal).padding(.vertical, 8).background(.bar)
             }
         }.sheet(isPresented: $model.showConnection) { ConnectionView() }
+            .onChange(of: model.pendingPushSeriesID) { _, _ in openPushSeries() }
+            .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries() }
+            .onChange(of: model.busy) { _, busy in if !busy { openPushSeries() } }
             .sheet(isPresented: $showBookmarks, onDismiss: openPendingSeries) {
                 BookmarksView { pendingSeries = $0; showBookmarks = false }
             }
@@ -104,6 +122,12 @@ struct LibraryView: View {
     private func openPendingSeries() {
         guard let id = pendingSeries else { return }; pendingSeries = nil
         if let series = model.series(id) { path = [series] }
+    }
+    private func openPushSeries() {
+        guard !model.busy, model.canBrowse, let id = model.pendingPushSeriesID, let series = model.series(id) else { return }
+        model.pendingPushSeriesID = nil
+        showBookmarks = false; showDownloads = false; model.showConnection = false
+        path = [series]
     }
 }
 
@@ -207,6 +231,7 @@ struct SeriesView: View {
     let series: LibrarySeries
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var downloads: DownloadManager
+    @ObservedObject private var push = ReaderPush.shared
     @State private var books: [LibraryBook] = []
     @State private var loading = true
     @State private var error: String?
@@ -221,6 +246,35 @@ struct SeriesView: View {
     private var bookmark: ReaderBookmark? { model.bookmarks.first { $0.seriesId == series.id } }
     var body: some View {
         List {
+            if model.followingWritable || model.isDemo || model.followedSeries.contains(series.id) {
+                Section {
+                    Button { Task { await model.toggleFollowing(series.id) } } label: {
+                        HStack {
+                            Label(L10n.text(model.followedSeries.contains(series.id) ? "Serie seguita" : "Segui la serie"),
+                                  systemImage: model.followedSeries.contains(series.id) ? "bell.fill" : "bell.badge")
+                            Spacer()
+                            if model.followingBusy.contains(series.id) { ProgressView() }
+                        }
+                    }.disabled(!model.canFollowSeries || model.followingBusy.contains(series.id))
+                        .accessibilityIdentifier("series-follow")
+                        .accessibilityValue(L10n.text(model.followedSeries.contains(series.id) ? "Attiva" : "Disattiva"))
+                    Text(L10n.text("Ricevi un avviso quando un nuovo capitolo è disponibile nella tua libreria."))
+                        .font(.caption).foregroundStyle(.secondary)
+                    if !model.isDemo, model.followedSeries.contains(series.id) {
+                        if !model.pushNotificationsAvailable {
+                            Text(L10n.text("Le notifiche push non sono ancora configurate su questo server."))
+                                .font(.caption).foregroundStyle(.orange)
+                        } else {
+                            Button(L10n.text(push.denied ? "Apri impostazioni notifiche" : "Attiva notifiche")) {
+                                if push.denied, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                                else { Task { await push.requestPermission() } }
+                            }.accessibilityIdentifier("enable-push-notifications")
+                            if let message = push.notice { Text(message).font(.caption).foregroundStyle(.orange) }
+                        }
+                    }
+                    if let error = model.followingError { Text(error).font(.caption).foregroundStyle(.orange) }
+                }
+            }
             if let bookmark {
                 Section {
                     Button {
@@ -302,8 +356,8 @@ struct SeriesView: View {
                         .accessibilityLabel(L10n.text("Download della serie")).accessibilityIdentifier("series-downloads")
                 }
             }
-            .task(id: model.offlineMode) { await load(); await model.refreshBookmarks() }
-            .refreshable { await load(); await model.refreshBookmarks() }
+            .task(id: model.offlineMode) { await load(); await model.refreshBookmarks(); await model.refreshFollows() }
+            .refreshable { await load(); await model.refreshBookmarks(); await model.refreshFollows() }
             .onChange(of: downloads.items.filter { $0.complete && $0.series.id == series.id }.map(\.id)) { _, _ in
                 if model.offlineMode { books = OfflineLibrary.books(seriesID: series.id, downloads: downloads.items) }
             }
