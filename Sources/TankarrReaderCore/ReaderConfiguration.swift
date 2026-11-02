@@ -41,6 +41,19 @@ public struct ReaderConfiguration: Codable, Equatable {
         guard let instance = profile.instanceID else { return false }
         return instance == current.instanceID && profile.username == current.username
     }
+    public func canReusePassword(from current: ServerProfile) -> Bool {
+        // The instance in an imported file is a claim, not proof of its origin.
+        // Never autofill a stored password into a newly supplied endpoint.
+        func endpoints(_ value: ServerProfile) -> Set<URL>? {
+            let addresses = [value.localAddress, value.remoteAddress].filter {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            return try? Set(addresses.map { try Endpoint.validate($0) })
+        }
+        guard matchesAccount(current), let requested = endpoints(profile), !requested.isEmpty,
+              let configured = endpoints(current) else { return false }
+        return requested.isSubset(of: configured)
+    }
 }
 
 public struct ImportedReaderConfiguration {

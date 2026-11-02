@@ -20,8 +20,10 @@ modifiche ai segnalibri non sincronizzate. Indirizzi, account e serie sono
 comunque dati personali: condividerlo solo con chi deve riceverli.
 
 Importare il file prepara i campi; toccare **Connetti** per verificarli e
-applicare le preferenze. La password già salvata viene mantenuta solo per
-lo stesso account/server; su un dispositivo nuovo si inserisce una volta.
+applicare le preferenze. La password già salvata viene mantenuta solo per lo
+stesso account/server e gli indirizzi già configurati. L'identità dichiarata
+da un file non autorizza l'invio della password a un indirizzo nuovo. Su un
+dispositivo nuovo o quando cambiano gli indirizzi si inserisce la password una volta.
 Le vecchie configurazioni di sola connessione, anche quelle con password,
 restano importabili; un nuovo export non copia mai quella password.
 
