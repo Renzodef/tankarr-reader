@@ -58,6 +58,34 @@ def test_simulator_verification_uses_adhoc_signing_for_keychain_without_apple_cr
     assert not any("DEVELOPMENT_TEAM" in str(call) or "allowProvisioningUpdates" in str(call) for call in calls)
 
 
+def test_device_verification_compiles_ios_and_tests_core_without_simulators_or_signing(monkeypatch):
+    calls = []
+
+    def fake_run(*args, **kwargs):
+        assert args[0] != "xcrun", "The fast path must work with no simulator runtimes installed"
+        calls.append(args)
+
+    monkeypatch.setattr(ci, "run", fake_run)
+    ci.verify_device()
+    assert any(call[:2] == ("swift", "test") for call in calls)
+    assert any(call[-1] == "Tools/check_store_assets.py" for call in calls)
+    builds = [call for call in calls if call[0] == "xcodebuild" and call[-1] == "build"]
+    assert len(builds) == 1
+    assert "generic/platform=iOS" in builds[0]
+    assert "CODE_SIGNING_ALLOWED=NO" in builds[0]
+    assert not any("allowProvisioningUpdates" in str(call) for call in calls)
+
+
+def test_device_build_failure_stops_verification(monkeypatch):
+    def fail_build(*args, **kwargs):
+        if args[-1] == "build":
+            raise subprocess.CalledProcessError(65, args)
+
+    monkeypatch.setattr(ci, "run", fail_build)
+    with pytest.raises(subprocess.CalledProcessError):
+        ci.verify_device()
+
+
 def test_prefers_idle_simulators_instead_of_an_already_running_device():
     active = {**device("iPhone 16"), "state": "Booted"}
     payload = {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-27-0":
@@ -108,6 +136,10 @@ def test_workflow_only_runs_main_on_the_serial_dedicated_mac():
     assert "inputs.action != 'verify'" in document
     assert "/Applications/Xcode.app/Contents/Developer" in document
     assert document.count("/opt/homebrew/bin/python3 -m venv") == 2
+    assert "run: python3 Tools/ci_build.py verify-device" in document
+    assert "if: ${{ !inputs.simulator_ui }}" in document
+    assert "if: ${{ inputs.simulator_ui }}" in document
+    assert "simulator_ui:" in events
 
 
 @pytest.mark.parametrize("changes", [

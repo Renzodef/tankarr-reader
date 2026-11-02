@@ -11,8 +11,8 @@ sono descritti in [Tools/CI_RUNNER.md](../Tools/CI_RUNNER.md).
 ## Flusso automatico
 
 1. Un push pertinente su `main` esegue i test Python del rilascio, `swift test`,
-   il controllo dei materiali App Store e i test UI su un iPhone e un iPad
-   disponibili nel simulatore. Questi passaggi non ricevono credenziali Apple.
+   il controllo dei materiali App Store e la compilazione iOS senza firma.
+   Non richiede runtime dei simulatori. Questi passaggi non ricevono credenziali Apple.
    Il workflow non ha trigger sulle pull request.
 2. Dopo il superamento dei test, crea un archivio firmato, esporta l'IPA e la
    carica in App Store Connect.
@@ -38,7 +38,7 @@ sempre il ramo `main`:
 
 | Azione | Versione | Build | Risultato |
 | --- | --- | --- | --- |
-| `verify` (predefinita) | Non usata | Non usata | Esegue tutti i test, senza firmare, caricare o distribuire una build |
+| `verify` (predefinita) | Non usata | Non usata | Esegue core, asset e compilazione iOS senza distribuire; `simulator_ui` abilita il percorso UI iPhone/iPad |
 | `testflight` | Facoltativa; altrimenti dal file dei metadati | Facoltativa; altrimenti prossimo numero Apple | Compila, firma, carica e distribuisce al gruppo interno |
 | `submit` | Obbligatoria, nel formato `X.Y.Z` | Obbligatoria, già presente e provata in TestFlight | Seleziona quella build e invia la versione pubblica ad App Review |
 
@@ -157,20 +157,28 @@ dei test, negli artefatti o nel repository.
 
 ## Verifica sul Mac
 
-Dopo il primo avvio di Xcode e l'installazione dei runtime iOS, dalla radice
-del repository e con l'ambiente Python descritto nella
+Dal 2 novembre 2026 Renzo preferisce provare la beta sull'iPhone reale per
+risparmiare spazio sul Mac. La verifica predefinita compila per iOS senza
+installare runtime. Dalla radice del repository, con Xcode inizializzato e
+l'ambiente Python descritto nella
 [guida del runner](../Tools/CI_RUNNER.md) attivo:
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-python3 Tools/ci_build.py verify
+python3 Tools/ci_build.py verify-device
 ```
 
-Il comando rigenera il progetto ed esegue gli stessi test dell'app del runner.
-Richiede un simulatore iPhone e un iPad disponibili nello stesso runtime iOS.
-I risultati UI restano in `build/results/`; nessun account Apple è necessario.
-I simulatori già accesi restano avviati; quelli avviati dalla CI vengono spenti
-al termine, senza cancellarne i dati.
+Il comando rigenera il progetto, esegue test del core e asset e compila l'app
+per un dispositivo iOS generico senza firma. Non prova l'interfaccia su un
+dispositivo: prima dell'invio pubblico Renzo verifica la build TestFlight
+sull'iPhone, soprattutto lettura, download in background, segnalibri e push.
+
+Il percorso completo `python3 Tools/ci_build.py verify` resta disponibile
+quando è installato un runtime iOS con iPhone e iPad, anche selezionando
+`simulator_ui` nel workflow manuale. I risultati UI restano in `build/results/`.
+Nessun account Apple è necessario; i simulatori già accesi restano avviati e
+quelli avviati dalla CI vengono spenti al termine, senza cancellarne i dati.
+La CI non scarica né reinstalla automaticamente i runtime rimossi.
 
 Riferimenti: [firma su GitHub Actions](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications),
 [caricamento build Apple](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds),
