@@ -31,6 +31,11 @@ on:
         description: 'Build esistente per submit; per TestFlight vuota = prossimo numero Apple'
         type: string
         required: false
+      simulator_ui:
+        description: 'Esegui anche i test UI nei simulatori (richiede un runtime iOS installato)'
+        type: boolean
+        default: false
+        required: false
 
 permissions:
   contents: read
@@ -44,7 +49,7 @@ env:
 
 jobs:
   verify:
-    name: Core, assets, iPhone and iPad
+    name: Core, assets and iOS build
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, macOS, ARM64, tankarr-reader]
     timeout-minutes: 45
@@ -59,7 +64,11 @@ jobs:
           echo "$RUNNER_TEMP/tankarr-ci-venv/bin" >> "$GITHUB_PATH"
       - name: Test release guards
         run: python3 -m pytest tooling_tests/test_tankarr_ios_ci.py tooling_tests/test_tankarr_ios_release.py -q
-      - name: Test application on both device families
+      - name: Test core and compile iOS without simulator runtimes
+        if: ${{ !inputs.simulator_ui }}
+        run: python3 Tools/ci_build.py verify-device
+      - name: Test application on both simulator device families (opt-in)
+        if: ${{ inputs.simulator_ui }}
         run: python3 Tools/ci_build.py verify
 
   deliver:

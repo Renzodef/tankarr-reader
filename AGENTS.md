@@ -32,10 +32,17 @@ python3 -m pytest tooling_tests/test_tankarr_ios_ci.py tooling_tests/test_tankar
 python3 Tools/check_store_assets.py
 ```
 
-Sul Mac, `python3 Tools/ci_build.py verify` esegue `swift test`, controlla gli
-asset e avvia i test UI su iPhone e iPad disponibili nello stesso runtime iOS.
-Preferire i controlli mirati alla modifica; eseguire l'intero percorso iOS
-quando cambiano i flussi dell'app o la firma.
+Decisione di Renzo del 2 novembre 2026: per risparmiare spazio e velocizzare
+TestFlight, la CI usa `python3 Tools/ci_build.py verify-device`: test del core,
+asset e compilazione iOS senza runtime dei simulatori. Renzo prova la build
+TestFlight sull'iPhone prima dell'invio pubblico; non dichiarare quei test
+manuali eseguiti dall'agente. La compilazione non prova download in background,
+push o navigazione su un dispositivo.
+
+`python3 Tools/ci_build.py verify` resta disponibile per il percorso completo
+con test UI iPhone/iPad nello stesso runtime iOS, anche tramite l'opzione
+manuale `simulator_ui` del workflow. Non installare automaticamente runtime
+pesanti. Le verifiche di firma e gli hook pre-push restano obbligatori.
 
 ## Credenziali e distribuzione
 

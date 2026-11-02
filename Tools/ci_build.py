@@ -73,11 +73,29 @@ def simulator_session(device):
             run("xcrun", "simctl", "shutdown", device["udid"], timeout=120)
 
 
-def verify():
+def verify_core():
     run("xcodebuild", "-version")
     run(sys.executable, "generate_project.py")
     run("swift", "test", "--jobs", "2", "--scratch-path", "build/package-tests")
     run(sys.executable, "Tools/check_store_assets.py")
+
+
+def verify_device():
+    """Test core and compile the iOS app without installing simulator runtimes.
+
+    This checks compilation, not on-device behavior. The owner tests the
+    TestFlight build on an iPhone before requesting public App Review.
+    """
+    verify_core()
+    run("xcodebuild", "-project", "TankarrReader.xcodeproj", "-scheme", SCHEME,
+        "-configuration", "Debug", "-destination", "generic/platform=iOS",
+        "-derivedDataPath", "build/DeviceDerivedData", "CODE_SIGNING_ALLOWED=NO", "build")
+    print("Core tests, store assets and iOS compilation passed. "
+          "Simulator UI tests were not run; test this build on an iPhone before public submission.", flush=True)
+
+
+def verify():
+    verify_core()
     devices = select_simulators(json.loads(run("xcrun", "simctl", "list", "devices", "available", "--json", capture=True)))
     for family, device in zip(("iphone", "ipad"), devices):
         print(f"UI tests: {device['name']} ({device['udid']})", flush=True)
@@ -377,12 +395,12 @@ def distribute():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("verify", "distribute", "cleanup"))
+    parser.add_argument("command", choices=("verify", "verify-device", "distribute", "cleanup"))
     command = parser.parse_args().command
     os.umask(0o077)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     try:
-        {"verify": verify, "distribute": distribute, "cleanup": cleanup}[command]()
+        {"verify": verify, "verify-device": verify_device, "distribute": distribute, "cleanup": cleanup}[command]()
     except subprocess.CalledProcessError as exc:
         # Do not dump command arguments or captured authentication output.
         print(f"CI failed: {Path(exc.cmd[0]).name} exited {exc.returncode}", file=sys.stderr)
