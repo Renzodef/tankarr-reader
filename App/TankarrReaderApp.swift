@@ -23,7 +23,18 @@ struct TankarrReaderApp: App {
     }
 }
 
+@MainActor
 final class ReaderAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        ReaderPush.shared.installDelegate()
+        return true
+    }
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { @MainActor in await ReaderPush.shared.receiveToken(deviceToken) }
+    }
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        ReaderPush.shared.notice = L10n.text("Registrazione notifiche in attesa. Riprova tornando online.")
+    }
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
         Task { @MainActor in
@@ -79,6 +90,12 @@ final class AppModel: ObservableObject {
     @Published private var offlineBookmarkWritable = false
     @Published private var bookmarkFailure: (format: String, error: Error)?
     @Published var readingStateWritable = false
+    @Published var followingWritable = false
+    @Published var pushNotificationsAvailable = false
+    @Published var followedSeries: Set<String> = []
+    @Published var followingBusy: Set<String> = []
+    @Published var followingError: String?
+    @Published var pendingPushSeriesID: String?
     @Published private(set) var offlineMode = false
     @Published private(set) var automaticOffline = false
     let downloads = DownloadManager()
@@ -136,6 +153,8 @@ final class AppModel: ObservableObject {
         if automaticOffline, networkAvailable != false { await reconnect() }
         await resumeBackgroundDownloads()
         await refreshBookmarks()
+        await refreshFollows()
+        await ReaderPush.shared.synchronize()
     }
     private func fallBackOffline(_ error: Error, client: ReaderAPI? = nil) async {
         guard !Task.isCancelled, !busy, !isDemo, !offlineMode,
@@ -177,6 +196,7 @@ final class AppModel: ObservableObject {
         }
         await downloads.activate(offlineAccount(profile))
         await restoreCachedBookmarks()
+        restoreFollows()
         if !downloads.items.isEmpty { offlineMode = true; library = downloadedSeries }
         if UserDefaults.standard.bool(forKey: "offlineReading"), downloads.account != nil {
             await useOffline(); return
@@ -212,6 +232,9 @@ final class AppModel: ObservableObject {
             let result: LibraryResponse = try await client.get("/v1/library")
             try PasswordStore.save(password)
             var accepted = newProfile; accepted.instanceID = status.instanceId
+            if (profile.instanceID != accepted.instanceID || profile.username != accepted.username), let previous = api {
+                await ReaderPush.shared.disconnect(client: previous)
+            }
             let stored = try JSONEncoder().encode(accepted)
             UserDefaults.standard.set(stored, forKey: "serverProfile")
             UserDefaults.standard.set(client.base.absoluteString, forKey: "downloadEndpoint")
@@ -219,6 +242,9 @@ final class AppModel: ObservableObject {
             await downloads.configureBackground(api: client)
             profile = accepted; api = client; isDemo = false; offlineMode = false; automaticOffline = false; library = result.items; covers.removeAllObjects()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
+            followingWritable = status.followingWritable == true
+            pushNotificationsAvailable = status.pushNotificationsAvailable == true
+            restoreFollows()
             if let account = downloads.account {
                 do { try await downloads.store.setBookmarkWritable(readingStateWritable, account: account) }
                 catch { bookmarkFailure = ("Impossibile salvare i segnalibri per l’uso offline. %@", error) }
@@ -229,6 +255,8 @@ final class AppModel: ObservableObject {
             endpointHost = client.base.host
             showConnection = false
             await refreshBookmarks()
+            await refreshFollows()
+            await ReaderPush.shared.synchronize()
         } catch {
             connectionError = error
             // A failed attempt to connect to another account must not change
@@ -274,12 +302,16 @@ final class AppModel: ObservableObject {
             connectionError = error; return
         }
         await downloads.activate(nil)
+        await ReaderPush.shared.disconnect(client: api)
+        clearFollowSnapshot()
         PasswordStore.remove(); UserDefaults.standard.removeObject(forKey: "serverProfile")
         UserDefaults.standard.removeObject(forKey: "demoMode")
         UserDefaults.standard.removeObject(forKey: "offlineReading")
         UserDefaults.standard.removeObject(forKey: "downloadEndpoint")
         api = nil; isDemo = false; offlineMode = false; automaticOffline = false; library = []; covers.removeAllObjects(); profile = ServerProfile()
         resetBookmarkSession(); readingStateWritable = false
+        followingWritable = false; pushNotificationsAvailable = false; followedSeries = []
+        followingError = nil; followingBusy = []; pendingPushSeriesID = nil
         endpointHost = nil; connectionError = nil; showConnection = true
     }
     private func offlineAccount(_ profile: ServerProfile) -> OfflineAccount? {
@@ -347,6 +379,7 @@ final class AppModel: ObservableObject {
         guard !busy, !switchingOffline else { return }
         await downloads.activate(OfflineAccount(instance: DemoCatalog.instanceID, username: "demo"))
         api = nil; isDemo = true; offlineMode = false; automaticOffline = false; library = DemoCatalog.series; covers.removeAllObjects()
+        followingWritable = false; pushNotificationsAvailable = false; restoreFollows(); pendingPushSeriesID = nil
         resetBookmarkSession(); readingStateWritable = false; bookmarks = demoBookmarks.all()
         await cacheBookmarks()
         connectionError = nil; endpointHost = nil; showConnection = false

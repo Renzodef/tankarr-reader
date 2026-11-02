@@ -62,6 +62,20 @@ public enum L10n {
     // Keys are the original Italian UI copy. Library metadata, artwork and story text
     // never pass through this catalog: changing the UI does not translate a book.
     static let english: [String: String] = [
+        "Se segui una serie e consenti le notifiche, il server salva la selezione e riceve il token APNs del dispositivo, lingua e account per avvisarti dei nuovi capitoli. Apple consegna l’avviso, che contiene titolo e numero del capitolo. Puoi smettere di seguire una serie o disabilitare le notifiche nelle impostazioni iOS.": "If you follow a series and allow notifications, your server stores the selection and receives the device APNs token, language and account to notify you about new chapters. Apple delivers the alert, which includes the chapter title and number. You can unfollow a series or disable notifications in iOS Settings.",
+        "Serie seguite": "Followed series",
+        "Nessuna serie seguita": "No followed series",
+        "Apri una serie e tocca Segui per ricevere gli avvisi dei nuovi capitoli.": "Open a series and tap Follow to receive new chapter alerts.",
+        "Serie seguita": "Following series",
+        "Segui la serie": "Follow series",
+        "Ricevi un avviso quando un nuovo capitolo è disponibile nella tua libreria.": "Get notified when a new chapter is available in your library.",
+        "Le notifiche push non sono ancora configurate su questo server.": "Push notifications are not configured on this server yet.",
+        "Apri impostazioni notifiche": "Open notification settings",
+        "Attiva notifiche": "Enable notifications",
+        "Impossibile aggiornare le serie seguite. Riprova.": "Unable to refresh followed series. Try again.",
+        "Impossibile modificare le serie seguite. Riprova.": "Unable to change followed series. Try again.",
+        "Impossibile attivare le notifiche. Riprova dalle impostazioni.": "Unable to enable notifications. Try again in Settings.",
+        "Registrazione notifiche in attesa. Riprova tornando online.": "Notification registration is pending. Try again when online.",
         "Non c’è un capitolo precedente.": "There is no previous chapter.",
         "Non c’è un capitolo successivo.": "There is no next chapter.",
         "Il capitolo precedente non è scaricato. Torna online per leggerlo.": "The previous chapter is not downloaded. Go online to read it.",

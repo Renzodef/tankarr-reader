@@ -19,6 +19,7 @@ struct PrivacyView: View {
             Section(L10n.text("Quando ti colleghi")) {
                 Text(L10n.text("L’app invia credenziali e richieste di lettura soltanto al server che configuri. Il suo gestore può vedere l’indirizzo IP e le risorse richieste secondo le proprie regole di conservazione. HTTPS verifica il certificato; HTTP è disponibile soltanto sulla rete locale."))
                 Text(L10n.text("Quando salvi, sposti o rimuovi un segnalibro, l’app aggiorna il segnalibro della serie sul tuo server Tankarr. Ogni serie ha un solo segnalibro, condiviso con gli altri lettori e dispositivi del server. Il cambio pagina aggiorna soltanto la posizione locale: usa Segnalibro per scegliere la pagina condivisa."))
+                Text(L10n.text("Se segui una serie e consenti le notifiche, il server salva la selezione e riceve il token APNs del dispositivo, lingua e account per avvisarti dei nuovi capitoli. Apple consegna l’avviso, che contiene titolo e numero del capitolo. Puoi smettere di seguire una serie o disabilitare le notifiche nelle impostazioni iOS."))
             }
             Section(L10n.text("Nessun tracciamento")) {
                 Text(L10n.text("Nessuna pubblicità, SDK di analisi o profilazione. La libreria dimostrativa funziona sul dispositivo, senza account e senza richieste di rete."))

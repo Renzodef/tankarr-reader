@@ -99,3 +99,19 @@ Riferimenti Apple verificati il 29 ottobre 2026:
 - https://developer.apple.com/app-store/review/guidelines/
 - https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots/
 - https://developer.apple.com/documentation/bundleresources/app-privacy-configuration/nsprivacyaccessedapitypes/nsprivacyaccessedapitype
+
+
+## Followed series and optional push notifications
+
+Open a series and choose Follow series. The library bell filters followed
+series. The demo stores this locally and makes no push registration or network
+request. On an authenticated compatible server, following is shared by the
+reader account. When the server has APNs configured, the first Follow requests
+iOS notification permission; denial does not prevent reading or following.
+
+The configured server sends alerts only for newly imported chapters after
+following, with duplicate/backfill suppression. Tapping an alert opens that
+series for the matching account and server. There is no silent-push loop,
+background polling or analytics SDK. Device/user identifiers and followed-series
+choices are used solely by the configured server for app functionality; the
+bundled privacy manifest and policy describe this optional feature.

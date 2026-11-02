@@ -202,6 +202,7 @@ def validate_signing(profile, certificate, team):
     if (profile.get("TeamIdentifier") != [team]
             or entitlements.get("application-identifier") != f"{team}.{BUNDLE_ID}"
             or entitlements.get("get-task-allow") is not False
+            or entitlements.get("aps-environment") != "production"
             or profile.get("ProvisionedDevices") or profile.get("ProvisionsAllDevices")):
         raise ValueError("Expected an App Store distribution profile for the configured team and bundle")
     common_names = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
