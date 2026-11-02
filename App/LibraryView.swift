@@ -139,6 +139,10 @@ struct BookmarksView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selected: ReaderBookmark?
     @State private var pendingSeries: String?
+    @AppStorage("reader.bookmarks.sort.v1") private var sorting: ReaderListSort = .recent
+    private var orderedBookmarks: [ReaderBookmark] {
+        ReaderListOrdering.bookmarks(model.visibleBookmarks, sort: sorting)
+    }
     var body: some View {
         NavigationStack {
             List {
@@ -148,6 +152,9 @@ struct BookmarksView: View {
                         .font(.callout).foregroundStyle(.secondary)
                     Text(L10n.text("Apri un capitolo e tocca l’icona Segnalibro in alto, poi Salva segnalibro."))
                         .font(.callout).foregroundStyle(.secondary)
+                    Picker(L10n.text("Ordina per"), selection: $sorting) {
+                        ForEach(ReaderListSort.allCases) { option in Text(option.title).tag(option) }
+                    }.accessibilityIdentifier("bookmarks-sort")
                 }
                 if !model.pendingBookmarkSeries.isEmpty {
                     Section {
@@ -164,7 +171,7 @@ struct BookmarksView: View {
                 if model.visibleBookmarks.isEmpty && !model.bookmarksLoading {
                     ContentUnavailableView(L10n.text("Nessun segnalibro"), systemImage: "bookmark", description: Text(L10n.text("Apri un libro e usa Segnalibro per salvare una pagina.")))
                 }
-                ForEach(model.visibleBookmarks) { bookmark in
+                ForEach(orderedBookmarks) { bookmark in
                     let available = !model.offlineMode || downloads.item(bookmark.bookId)?.complete == true
                     Button {
                         if available { selected = bookmark } else { onShowSeries(bookmark.seriesId) }
