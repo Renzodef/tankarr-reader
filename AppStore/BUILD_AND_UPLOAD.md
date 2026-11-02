@@ -57,6 +57,68 @@ una nuova versione pubblica quando quella corrente è pronta per la distribuzion
 Una build TestFlight può essere poi usata per il rilascio pubblico: l'esportazione
 CI non applica la limitazione «TestFlight Internal Only».
 
+## Aggiornamenti della versione pubblica
+
+TestFlight e App Store sono due distribuzioni dello stesso bundle, ma le loro
+versioni non avanzano insieme. Il push prepara una beta; non aggiorna l'app
+installata dall'App Store. Ogni aggiornamento pubblico passa da App Review,
+anche dopo la prima approvazione.
+
+1. Raggruppare le modifiche provate in una versione stabile, per esempio
+   `1.0.1` dopo `1.0.0`. Aggiornare versione nei metadati e nel generatore,
+   rigenerare il progetto e lasciare alla CI test e caricamento TestFlight.
+   Una build `1.0.0` non può essere selezionata come build di `1.0.1`:
+   deve coincidere anche la versione di marketing, non solo il numero di build.
+2. Provare quella build, compresi download in background, segnalibri offline
+   e, se configurate, push su un iPhone reale. Non basta il simulatore per APNs.
+3. Preparare la versione corrispondente in App Store Connect: descrizioni IT/EN,
+   novità, screenshot coerenti, privacy e note per il revisore. Il campo
+   `marketing_url` nei metadati indica il progetto pubblico Tankarr; non
+   collegare il repository privato del Reader agli utenti.
+4. Avviare esplicitamente `submit` con versione e build provate. Preferire il
+   rilascio manuale se si vuole controllare il momento della pubblicazione;
+   l'opzione automatica pubblica dopo l'approvazione. Non inviare ogni push.
+5. Gli utenti ricevono l'aggiornamento dall'App Store, automaticamente se lo
+   hanno consentito oppure con Aggiorna. Non serve una seconda app o una
+   nuova installazione. TestFlight resta il canale per provare le novità prima.
+
+### Modificare soltanto la pagina App Store
+
+`AppStore/metadata.json` descrive il codice corrente: committarlo non pubblica
+la descrizione su Apple. Conservare una copia dei metadati letti da Apple
+prima di aggiornarli e verificare i campi rileggendoli dopo la modifica.
+
+Il testo promozionale (170 caratteri) è modificabile anche sulla versione
+pubblicata. Descrizione completa e Marketing URL della `1.0.0` sono bloccati
+in `READY_FOR_SALE`: Apple restituisce HTTP 409 `STATE_ERROR`. Preparare quei
+campi sulla versione successiva, senza dichiararli già visibili sullo Store.
+Il 2 novembre 2026 il testo promozionale IT/EN è stato aggiornato con una
+spiegazione del server e `https://github.com/Renzodef/tankarr`. La pagina di
+assistenza pubblica contiene il collegamento cliccabile e i requisiti.
+
+Riferimenti Apple: [proprietà della versione](https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information),
+[nuova versione](https://developer.apple.com/help/app-store-connect/update-your-app/create-a-new-version/).
+
+## Attivare gli avvisi delle serie seguite
+
+Aprire una serie e scegliere **Segui la serie**, poi **Attiva notifiche** e
+consentire la richiesta iOS. Se il consenso era stato negato, usare **Apri
+impostazioni notifiche**: iOS non ripropone il popup a ogni tentativo.
+
+Servono una build con questa funzione e un gateway con credenziali APNs
+configurate. Se il server dichiara `push_notifications_available=false`,
+l'app mostra che le push non sono configurate e non chiede un consenso
+inutile. La chiave API App Store Connect usata per caricare le build non è
+una chiave APNs: il gestore deve creare una chiave con servizio Apple Push
+Notification abilitato e conservarla solo nella configurazione privata del
+gateway. Il consenso iOS è per dispositivo e non viene importato con il
+file di configurazione. Il Segui resta salvato anche senza push.
+
+Il rilascio pubblico iniziale `1.0.0 (2)` precede questa funzione; il relativo
+codice è presente nelle beta successive. Per provarne la consegna servono
+un iPhone registrato, consenso, APNs configurato e un nuovo capitolo reale
+importato dopo il Segui; né il solo Segui né un test outbox provano la consegna.
+
 ## Configurazione GitHub
 
 Repository Secrets:

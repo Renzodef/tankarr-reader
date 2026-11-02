@@ -64,8 +64,10 @@ created for this app. The demo does not expose the developer's private library.
    with paged/continuous reading and local progress. Close and reopen it to
    check persistence. Downloads can be paused, resumed and removed locally.
    **Reconnect to server** leaves offline mode (in demo, returns to the demo).
-   Transfers require the app to remain open; incomplete copies are not offered
-   as offline books. Server bookmarks require a connection and explicit action.
+   Transfers may continue in the background subject to iOS scheduling. The queue
+   persists after a force-quit and resumes from missing pages on reopening;
+   incomplete copies are not offered as offline books. Explicit bookmark changes
+   made offline wait and sync after reconnecting to the same account and server.
    Downloads only copy content from the user's configured library; they never
    search or acquire content from third-party sources. Copies are private,
    separated by server/account, and excluded from device backups.
@@ -115,3 +117,13 @@ series for the matching account and server. There is no silent-push loop,
 background polling or analytics SDK. Device/user identifiers and followed-series
 choices are used solely by the configured server for app functionality; the
 bundled privacy manifest and policy describe this optional feature.
+
+## Server project and public listing
+
+Tankarr is the open-source, self-hosted server; Tankarr Reader is its native
+reading client. The public server project and installation documentation are
+at https://github.com/Renzodef/tankarr. Users supply a compatible Reader gateway
+and reader account, or use the original built-in demo without signing in.
+The app does not provide a hosted content catalog or a content subscription.
+The description in metadata.json targets the current tested code; only metadata
+explicitly saved in App Store Connect is public, subject to version state.
