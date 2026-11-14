@@ -87,7 +87,7 @@ public enum Endpoint {
                                method: String = "GET", jsonBody: Data? = nil) throws -> URLRequest {
         _ = try validate(base.absoluteString)
         let id = "[A-Za-z0-9][A-Za-z0-9_.-]{0,159}"
-        let readable = path.range(of: "^/v1/(status|library|bookmarks|follows|series/\(id)(/cover)?|books/\(id)(/pages/[0-9]+)?)$", options: .regularExpression) != nil
+        let readable = path.range(of: "^/v1/(status|library|bookmarks|follows|series/\(id)(/(cover|catalogues))?|books/\(id)(/pages/[0-9]+)?)$", options: .regularExpression) != nil
         let bookmark = path.range(of: "^/v1/series/\(id)/bookmark$", options: .regularExpression) != nil
         let follow = path.range(of: "^/v1/series/\(id)/follow$", options: .regularExpression) != nil
         let device = path.range(of: "^/v1/notifications/devices/[0-9a-fA-F-]{36}$", options: .regularExpression) != nil
@@ -147,6 +147,51 @@ public struct LibrarySeries: Codable, Identifiable, Hashable, Sendable {
     public let language: String
     public let booksCount: Int
     public let coverPath: String
+    public let catalogueLinks: [CatalogueLink]?
+
+    public init(id: String, title: String, description: String, authors: [String], language: String,
+                booksCount: Int, coverPath: String, catalogueLinks: [CatalogueLink]? = nil) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.authors = authors
+        self.language = language
+        self.booksCount = booksCount
+        self.coverPath = coverPath
+        self.catalogueLinks = catalogueLinks
+    }
+}
+
+public struct CatalogueLinksResponse: Decodable {
+    public let items: [CatalogueLink]
+}
+
+public struct CatalogueLink: Codable, Hashable, Identifiable, Sendable {
+    public let source: String
+    public let label: String
+    public let url: String
+    public var id: String { source }
+
+    public var destination: URL? {
+        guard let hosts = Self.hosts[source],
+              let components = URLComponents(string: url),
+              components.scheme == "https",
+              let host = components.host?.lowercased(),
+              hosts.contains(host),
+              components.user == nil, components.password == nil,
+              components.port == nil, components.fragment == nil else { return nil }
+        return components.url
+    }
+
+    private static let hosts: [String: Set<String>] = [
+        "mangabaka": ["mangabaka.org"],
+        "myanimelist": ["myanimelist.net", "www.myanimelist.net"],
+        "anilist": ["anilist.co"],
+        "mangaupdates": ["mangaupdates.com", "www.mangaupdates.com"],
+        "kitsu": ["kitsu.app", "kitsu.io"],
+        "animeplanet": ["anime-planet.com", "www.anime-planet.com"],
+        "anime_news_network": ["animenewsnetwork.com", "www.animenewsnetwork.com"]
+    ]
 }
 public struct BooksResponse: Decodable { public let books: [LibraryBook] }
 public struct LibraryBook: Codable, Identifiable, Hashable, Sendable {
