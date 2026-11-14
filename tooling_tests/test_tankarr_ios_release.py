@@ -364,6 +364,12 @@ def test_http_errors_and_redirects_do_not_disclose_response_or_token(api):
         assert str(status) in str(error.value)
         assert "private" not in str(error.value)
         assert "fake-token" not in str(error.value)
+    session.override = lambda *args: Response({"errors": [
+        {"code": "FORBIDDEN.REQUIRED_AGREEMENTS_MISSING", "detail": "private account details"},
+    ]}, 403)
+    with pytest.raises(asc.ReleaseError, match="403 .*REQUIRED_AGREEMENTS_MISSING") as error:
+        manager.next_build("1.0.1")
+    assert "private" not in str(error.value)
 
 
 def test_network_exception_text_is_redacted(api):

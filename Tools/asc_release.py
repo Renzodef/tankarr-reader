@@ -111,7 +111,16 @@ class AppleClient:
             raise ReleaseError("App Store Connect network request failed; check connectivity and retry.") from None
         if not 200 <= response.status_code < 300:
             # Apple error details can echo submitted data; never log response bodies or headers.
-            raise ReleaseError(f"App Store Connect returned HTTP {response.status_code}; inspect the request in App Store Connect.")
+            code = ""
+            if response.status_code == 403:
+                try:
+                    errors = response.json().get("errors", [])
+                    value = errors[0].get("code", "")
+                    if re.fullmatch(r"[A-Z][A-Z0-9_.]{0,95}", value):
+                        code = f" ({value})"
+                except (ValueError, AttributeError, IndexError, TypeError, KeyError):
+                    pass
+            raise ReleaseError(f"App Store Connect returned HTTP {response.status_code}{code}; inspect the request in App Store Connect.")
         if response.status_code == 204:
             return {}
         try:
