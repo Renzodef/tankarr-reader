@@ -72,6 +72,7 @@ public enum L10n {
     // Keys are the original Italian UI copy. Library metadata, artwork and story text
     // never pass through this catalog: changing the UI does not translate a book.
     static let english: [String: String] = [
+        "Cataloghi collegati": "Linked catalogues",
         "Riprova i download": "Retry downloads",
         "Ricollegamento…": "Reconnecting…",
         "Attiva modalità offline": "Enable offline mode",

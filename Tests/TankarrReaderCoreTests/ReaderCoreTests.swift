@@ -96,8 +96,21 @@ final class ReaderCoreTests: XCTestCase {
         let raw = #"{"items":[{"id":"a","title":"A","description":"D","authors":[],"language":"en","books_count":2,"cover_path":"/v1/series/a/cover"}]}"#
         let result = try decoder.decode(LibraryResponse.self, from: Data(raw.utf8))
         XCTAssertEqual(result.items[0].booksCount, 2)
+        XCTAssertNil(result.items[0].catalogueLinks)
         let book = #"{"id":"b","series_title":"S","title":"T","page_count":4,"direction":"rtl","mode":"manga","previous_id":null,"next_id":"c"}"#
         XCTAssertEqual(try decoder.decode(ReaderBook.self, from: Data(book.utf8)).nextId, "c")
+    }
+    func testCatalogueShortcutsUsePublicHTTPSAndReadOnlyReaderRoute() throws {
+        let base = try Endpoint.validate("https://reader.example.org")
+        let path = "/v1/series/series-1/catalogues"
+        XCTAssertNoThrow(try Endpoint.request(base: base, path: path, username: "reader", password: "fixture"))
+        XCTAssertThrowsError(try Endpoint.request(base: base, path: path, username: "reader", password: "fixture", method: "DELETE"))
+        let valid = CatalogueLink(source: "myanimelist", label: "MyAnimeList", url: "https://myanimelist.net/manga/123")
+        XCTAssertEqual(valid.destination?.absoluteString, "https://myanimelist.net/manga/123")
+        for url in ["http://myanimelist.net/manga/123", "https://user@myanimelist.net/manga/123",
+                    "https://myanimelist.net.example.org/manga/123"] {
+            XCTAssertNil(CatalogueLink(source: valid.source, label: valid.label, url: url).destination)
+        }
     }
     func testRedirectDelegateAlwaysRefuses() {
         let delegate = RefuseRedirects()

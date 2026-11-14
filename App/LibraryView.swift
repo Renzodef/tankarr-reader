@@ -245,6 +245,7 @@ struct SeriesView: View {
     @EnvironmentObject private var downloads: DownloadManager
     @ObservedObject private var push = ReaderPush.shared
     @State private var books: [LibraryBook] = []
+    @State private var loadedCatalogueLinks: [CatalogueLink]?
     @State private var loading = true
     @State private var error: String?
     @State private var selected: Opening?
@@ -310,6 +311,9 @@ struct SeriesView: View {
             if !series.description.isEmpty {
                 Section { Text(series.description).font(.callout).foregroundStyle(.secondary).lineLimit(7) }
             }
+            if !model.offlineMode {
+                catalogueSection
+            }
             if loading { ProgressView(L10n.text("Carico i libri…")) }
             if let error { Section { Text(error); Button(L10n.text("Riprova")) { Task { await load() } } } }
             if downloads.hasDownloads(seriesID: series.id) {
@@ -369,7 +373,12 @@ struct SeriesView: View {
                 }
             }
             .task(id: model.offlineMode) { await load(); await model.refreshBookmarks(); await model.refreshFollows() }
-            .refreshable { await load(); await model.refreshBookmarks(); await model.refreshFollows() }
+            .task(id: model.offlineMode) { await loadCatalogueLinks() }
+            .refreshable {
+                async let catalogues: Void = loadCatalogueLinks(reload: true)
+                await load(); await model.refreshBookmarks(); await model.refreshFollows()
+                await catalogues
+            }
             .onChange(of: downloads.items.filter { $0.complete && $0.series.id == series.id }.map(\.id)) { _, _ in
                 if model.offlineMode { books = OfflineLibrary.books(seriesID: series.id, downloads: downloads.items) }
             }
@@ -394,6 +403,57 @@ struct SeriesView: View {
                         }
                     }
                 } message: { Text(L10n.text("La libreria e i segnalibri sul server restano invariati.")) }
+    }
+    private var catalogueSection: some View {
+        let links = (loadedCatalogueLinks ?? series.catalogueLinks ?? []).filter { $0.destination != nil }
+        return Group {
+            if !links.isEmpty {
+                Section(L10n.text("Cataloghi collegati")) {
+                    ForEach(links) { link in
+                        if let url = link.destination {
+                            let (symbol, color) = catalogueIcon(link.source)
+                            Link(destination: url) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: symbol)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(color)
+                                        .frame(width: 34, height: 34)
+                                        .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 9))
+                                        .accessibilityHidden(true)
+                                    Text(link.label).foregroundStyle(.primary)
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .accessibilityHidden(true)
+                                }
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    private func catalogueIcon(_ source: String) -> (String, Color) {
+        switch source {
+        case "mangabaka": ("books.vertical.fill", .orange)
+        case "myanimelist": ("list.bullet.rectangle.fill", .blue)
+        case "anilist": ("star.fill", .cyan)
+        case "mangaupdates": ("arrow.triangle.2.circlepath", .green)
+        case "kitsu": ("flame.fill", .pink)
+        case "animeplanet": ("globe.europe.africa.fill", .purple)
+        case "anime_news_network": ("newspaper.fill", .teal)
+        default: ("book.fill", .accentColor)
+        }
+    }
+    private func loadCatalogueLinks(reload: Bool = false) async {
+        guard !model.offlineMode, !model.isDemo, let api = model.api,
+              let id = try? Endpoint.identifier(series.id),
+              let result: CatalogueLinksResponse = try? await api.get("/v1/series/\(id)/catalogues", reload: reload),
+              !Task.isCancelled, model.api === api, !model.offlineMode else { return }
+        loadedCatalogueLinks = result.items
     }
     private func enqueue(_ selection: [LibraryBook]) {
         downloads.enqueue(series: series, books: selection, api: model.api, demo: model.isDemo)
