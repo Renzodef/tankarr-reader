@@ -356,7 +356,14 @@ def distribute():
             version = json.loads((ROOT / "AppStore/metadata.json").read_text())["version"]
             if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
                 raise ValueError("AppStore/metadata.json must declare version X.Y.Z")
-        next_build = run(*helper, "next-build", "--version", version, capture=True).strip()
+        try:
+            next_build = run(*helper, "next-build", "--version", version, capture=True).strip()
+        except subprocess.CalledProcessError as error:
+            # asc_release reports sanitized diagnostics with this prefix.
+            diagnostic = (error.stderr or "").strip()
+            if re.fullmatch(r"error: [^\r\n]{1,240}", diagnostic):
+                raise RuntimeError(diagnostic) from None
+            raise
         if not re.fullmatch(r"[1-9][0-9]{0,8}", next_build):
             raise ValueError("Invalid next build number from Apple")
         build = requested_build or next_build
