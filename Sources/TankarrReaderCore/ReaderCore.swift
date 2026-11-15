@@ -149,6 +149,25 @@ public struct LibrarySeries: Codable, Identifiable, Hashable, Sendable {
     public let coverPath: String
     public let catalogueLinks: [CatalogueLink]?
 
+    public var authorNames: [String] {
+        var seen = Set<String>()
+        return authors.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    public func matchesLibrarySearch(_ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty || title.localizedStandardContains(query)
+            || authorNames.contains { $0.localizedStandardContains(query) }
+    }
+
+    public func hasAuthor(_ author: String) -> Bool {
+        let name = author.trimmingCharacters(in: .whitespacesAndNewlines)
+        return authorNames.contains {
+            $0.compare(name, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) == .orderedSame
+        }
+    }
+
     public init(id: String, title: String, description: String, authors: [String], language: String,
                 booksCount: Int, coverPath: String, catalogueLinks: [CatalogueLink]? = nil) {
         self.id = id

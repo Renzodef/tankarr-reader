@@ -1,20 +1,23 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum LibraryDestination: Hashable {
+    case series(LibrarySeries)
+    case author(String)
+}
+
 struct LibraryView: View {
     @EnvironmentObject private var model: AppModel
-    @EnvironmentObject private var downloads: DownloadManager
     @State private var search = ""
     @State private var showBookmarks = false
     @State private var showDownloads = false
-    @State private var path: [LibrarySeries] = []
+    @State private var path: [LibraryDestination] = []
     @State private var pendingSeries: String?
     @State private var showFollowed = false
-    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16, alignment: .top)]
     private var filtered: [LibrarySeries] {
         if showFollowed && model.offlineMode { return [] }
         let rows = showFollowed ? model.visibleLibrary.filter { model.followedSeries.contains($0.id) } : model.visibleLibrary
-        return search.isEmpty ? rows : rows.filter { $0.title.localizedStandardContains(search) }
+        return rows.filter { $0.matchesLibrarySearch(search) }
     }
     var body: some View {
         NavigationStack(path: $path) {
@@ -29,19 +32,7 @@ struct LibraryView: View {
                     Button(L10n.text("Configura connessione")) { model.showConnection = true }.buttonStyle(.borderedProminent)
                     Button(L10n.text("Esplora la demo")) { Task { await model.startDemo() } }.padding(.top, 8)
                 } else {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
-                        ForEach(filtered) { series in
-                            NavigationLink(value: series) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    CoverView(series: series)
-                                    Text(series.title).font(.headline).lineLimit(2, reservesSpace: true).foregroundStyle(.primary)
-                                    Text(L10n.format(model.offlineMode ? "%d file scaricati" : "%d file disponibili",
-                                        model.offlineMode ? downloads.items.filter { $0.complete && $0.series.id == series.id }.count : series.booksCount))
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }.frame(maxWidth: .infinity, alignment: .topLeading)
-                            }.buttonStyle(.plain)
-                        }
-                    }.padding()
+                    LibrarySeriesGrid(series: filtered)
                     if filtered.isEmpty {
                         if showFollowed && model.offlineMode {
                             ContentUnavailableView(L10n.text("Serie seguite non disponibili offline"), systemImage: "bell.slash",
@@ -57,10 +48,15 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Tankarr")
-            .searchable(text: $search, prompt: L10n.text("Cerca nella libreria"))
+            .searchable(text: $search, prompt: L10n.text("Cerca per titolo o autore"))
             .scrollBounceBehavior(.always, axes: .vertical)
             .refreshable { await model.refresh() }
-            .navigationDestination(for: LibrarySeries.self) { SeriesView(series: $0) }
+            .navigationDestination(for: LibraryDestination.self) { destination in
+                switch destination {
+                case .series(let series): SeriesView(series: series)
+                case .author(let name): AuthorSeriesView(author: name)
+                }
+            }
             .toolbar {
                 if model.followingWritable || model.isDemo || !model.followedSeries.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -126,13 +122,54 @@ struct LibraryView: View {
     }
     private func openPendingSeries() {
         guard let id = pendingSeries else { return }; pendingSeries = nil
-        if let series = model.series(id) { path = [series] }
+        if let series = model.series(id) { path = [.series(series)] }
     }
     private func openPushSeries() {
         guard !model.busy, model.canBrowse, let id = model.pendingPushSeriesID, let series = model.series(id) else { return }
         model.pendingPushSeriesID = nil
         showBookmarks = false; showDownloads = false; model.showConnection = false
-        path = [series]
+        path = [.series(series)]
+    }
+}
+
+private struct LibrarySeriesGrid: View {
+    let series: [LibrarySeries]
+    @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var downloads: DownloadManager
+    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16, alignment: .top)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+            ForEach(series) { entry in
+                NavigationLink(value: LibraryDestination.series(entry)) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        CoverView(series: entry)
+                        Text(entry.title).font(.headline).lineLimit(2, reservesSpace: true).foregroundStyle(.primary)
+                        Text(L10n.format(model.offlineMode ? "%d file scaricati" : "%d file disponibili",
+                            model.offlineMode ? downloads.items.filter { $0.complete && $0.series.id == entry.id }.count : entry.booksCount))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }.frame(maxWidth: .infinity, alignment: .topLeading)
+                }.buttonStyle(.plain)
+            }
+        }.padding()
+    }
+}
+
+private struct AuthorSeriesView: View {
+    let author: String
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let series = model.visibleLibrary.filter { $0.hasAuthor(author) }
+        ScrollView {
+            if series.isEmpty {
+                ContentUnavailableView(L10n.text("Nessuna serie di questo autore"), systemImage: "books.vertical")
+            } else {
+                LibrarySeriesGrid(series: series)
+            }
+        }
+        .navigationTitle(author)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -259,6 +296,16 @@ struct SeriesView: View {
     private var bookmark: ReaderBookmark? { model.bookmarks.first { $0.seriesId == series.id } }
     var body: some View {
         List {
+            let authors = series.authorNames
+            if !authors.isEmpty {
+                Section(L10n.text("Autori")) {
+                    ForEach(authors, id: \.self) { author in
+                        NavigationLink(value: LibraryDestination.author(author)) {
+                            Label(author, systemImage: "person.crop.circle")
+                        }
+                    }
+                }
+            }
             if model.followingWritable || model.isDemo || model.followedSeries.contains(series.id) {
                 Section {
                     Button { Task { await model.toggleFollowing(series.id) } } label: {

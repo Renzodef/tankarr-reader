@@ -2,6 +2,21 @@ import XCTest
 @testable import TankarrReaderCore
 
 final class ReaderCoreTests: XCTestCase {
+    func testLibrarySearchAndAuthorMatching() {
+        let series = LibrarySeries(id: "series-1", title: "Segnali dal faro", description: "",
+            authors: [" Andrea Pazienza ", "Léa Martin", "", "Léa Martin"], language: "it", booksCount: 1, coverPath: "")
+        XCTAssertEqual(series.authorNames, ["Andrea Pazienza", "Léa Martin"])
+        XCTAssertTrue(series.matchesLibrarySearch(" FARO "))
+        XCTAssertTrue(series.matchesLibrarySearch("pazienza"))
+        XCTAssertTrue(series.matchesLibrarySearch("lea mar"))
+        XCTAssertTrue(series.matchesLibrarySearch("  "))
+        XCTAssertFalse(series.matchesLibrarySearch("Loputyn"))
+        XCTAssertTrue(series.hasAuthor("andrea pazienza"))
+        XCTAssertTrue(series.hasAuthor("Lea Martin"))
+        XCTAssertFalse(series.hasAuthor("Pazienza"))
+        XCTAssertFalse(series.hasAuthor(""))
+    }
+
     func testRejectsUnsafeAddresses() {
         for value in ["http://example.org", "https://user:secret@example.org", "https://example.org/?token=x", "https://example.org/#x", "file:///tmp", "https://example.org/../admin", "http://127.1", "http://0x7f000001", "http://192.168.1.01", "https://example.org:0"] {
             XCTAssertThrowsError(try Endpoint.validate(value), value)
