@@ -106,7 +106,7 @@ final class DownloadManager: ObservableObject {
             // Thumbnail is optional; the actual durable queue never waits on it.
             if let account {
                 Task {
-                    guard let data = try? await api.data("/v1/series/\(try Endpoint.identifier(series.id))/cover", timeout: 10),
+                    guard let data = try? await api.cover(series.id),
                           self.account == account, let image = UIImage(data: data),
                           let thumb = await image.byPreparingThumbnail(ofSize: CGSize(width: 360, height: 540)),
                           let jpeg = thumb.jpegData(compressionQuality: 0.8) else { return }

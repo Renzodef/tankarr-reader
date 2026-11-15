@@ -2,6 +2,7 @@ import SwiftUI
 import Security
 import UIKit
 import Network
+import ImageIO
 
 @main
 struct TankarrReaderApp: App {
@@ -78,6 +79,8 @@ final class AppModel: ObservableObject {
     @Published var library: [LibrarySeries] = []
     @Published var busy = false
     @Published var refreshing = false
+    @Published private(set) var coverRevision = UUID()
+    @Published private(set) var imageSession = UUID()
     @Published var refreshNotice: String?
     @Published private var connectionError: Error?
     @Published var showConnection = false
@@ -119,6 +122,15 @@ final class AppModel: ObservableObject {
     private var restored = false
     private var sessionID = UUID()
     private let covers = NSCache<NSString, UIImage>()
+    private let pages = NSCache<NSString, UIImage>()
+    private var coverDates: [String: Date] = [:]
+    private let coverDisk = ReaderCoverCache(root: FileManager.default.urls(for: .cachesDirectory,
+        in: .userDomainMask)[0].appendingPathComponent("ReaderCovers", isDirectory: true))
+
+    private func resetCovers() {
+        covers.removeAllObjects(); pages.removeAllObjects(); coverDates.removeAll()
+        coverRevision = UUID(); imageSession = UUID()
+    }
     private let progress = ReadingProgress()
     private let readingPreferences = ReadingPreferences()
     private let languagePreferences = AppLanguagePreferences()
@@ -126,12 +138,15 @@ final class AppModel: ObservableObject {
     private let networkMonitor = NWPathMonitor()
     private var networkAvailable: Bool?
     private var switchingOffline = false
+    private var clearingImages = false
 
     init() {
         appLanguage = languagePreferences.language
         L10n.language = appLanguage
         covers.totalCostLimit = 32 * 1024 * 1024
         covers.countLimit = 100
+        pages.totalCostLimit = 64 * 1024 * 1024
+        pages.countLimit = 3
         if let data = UserDefaults.standard.data(forKey: "serverProfile"),
            let saved = try? JSONDecoder().decode(ServerProfile.self, from: data) { profile = saved }
         networkMonitor.pathUpdateHandler = { [weak self] path in
@@ -242,7 +257,7 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(client.base.absoluteString, forKey: "downloadEndpoint")
             await downloads.activate(offlineAccount(accepted))
             await downloads.configureBackground(api: client)
-            profile = accepted; api = client; isDemo = false; offlineMode = false; automaticOffline = false; library = result.items; covers.removeAllObjects()
+            profile = accepted; api = client; isDemo = false; offlineMode = false; automaticOffline = false; library = result.items; resetCovers()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
             followingWritable = status.followingWritable == true
             pushNotificationsAvailable = status.pushNotificationsAvailable == true
@@ -288,7 +303,7 @@ final class AppModel: ObservableObject {
             let result: LibraryResponse = try await client.get("/v1/library", reload: true)
             try Task.checkCancellation()
             guard client === api, !offlineMode else { return }
-            library = result.items; covers.removeAllObjects(); connectionError = nil
+            library = result.items; pages.removeAllObjects(); coverRevision = UUID(); connectionError = nil
             await refreshBookmarks(); await refreshFollows()
             refreshNotice = L10n.text("Tankarr aggiornato")
         } catch {
@@ -322,7 +337,8 @@ final class AppModel: ObservableObject {
     }
     func disconnect() async {
         guard !busy, !switchingOffline else { return }; busy = true
-        defer { busy = false }
+        clearingImages = true; resetCovers()
+        defer { busy = false; clearingImages = false; coverRevision = UUID() }
         let wasWritable = readingStateWritable
         // A response from the old session must not recreate its journal after logout.
         resetBookmarkSession(); readingStateWritable = false
@@ -330,9 +346,11 @@ final class AppModel: ObservableObject {
             try await downloads.removeAll()
             if let current = downloads.account {
                 try await downloads.store.removeAll(account: current, includingBookmarks: true)
+                try await coverDisk.remove(account: current)
             }
             if let saved = offlineAccount(profile), saved != downloads.account {
                 try await downloads.store.removeAll(account: saved, includingBookmarks: true)
+                try await coverDisk.remove(account: saved)
             }
         }
         catch {
@@ -347,7 +365,7 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "demoMode")
         UserDefaults.standard.removeObject(forKey: "offlineReading")
         UserDefaults.standard.removeObject(forKey: "downloadEndpoint")
-        api = nil; isDemo = false; offlineMode = false; automaticOffline = false; library = []; covers.removeAllObjects(); profile = ServerProfile()
+        api = nil; isDemo = false; offlineMode = false; automaticOffline = false; library = []; resetCovers(); profile = ServerProfile()
         resetBookmarkSession(); readingStateWritable = false
         followingWritable = false; pushNotificationsAvailable = false; followedSeries = []
         followingError = nil; followingBusy = []; pendingPushSeriesID = nil
@@ -369,30 +387,59 @@ final class AppModel: ObservableObject {
         // Only a deliberate offline selection persists across launches.
         UserDefaults.standard.set(!automatic, forKey: "offlineReading")
         await downloads.pauseAll(preserveQueue: true)
-        api = nil; offlineMode = true; library = downloadedSeries; covers.removeAllObjects()
+        api = nil; offlineMode = true; library = downloadedSeries; resetCovers()
         sessionID = UUID(); bookmarksLoading = false; bookmarkBusy = false
         readingStateWritable = false; connectionError = nil; showConnection = false
         await restoreCachedBookmarks()
     }
     func cover(_ id: String) async -> UIImage? {
-        if let cached = covers.object(forKey: id as NSString) { return cached }
+        guard !clearingImages, !Task.isCancelled else { return nil }
+        let revision = coverRevision
+        if let date = coverDates[id], Date().timeIntervalSince(date) < 300,
+           let cached = covers.object(forKey: id as NSString) { return cached }
         if offlineMode {
             guard let account = downloads.account,
                   let data = try? await downloads.store.cover(seriesID: id, account: account) else { return nil }
-            return UIImage(data: data)
+            return await Self.coverThumbnail(data)
         }
         if isDemo, let series = DemoCatalog.series.first(where: { $0.id == id }) {
             let image = DemoArtwork.cover(series)
             covers.setObject(image, forKey: id as NSString, cost: 600 * 900 * 4)
+            coverDates[id] = Date()
             return image
         }
-        guard let api, (try? Endpoint.identifier(id)) != nil,
-              let data = try? await api.data("/v1/series/\(id)/cover", timeout: 20),
-              let source = UIImage(data: data) else { return nil }
-        // Keep thumbnails, not full-size cover bitmaps, in the bounded memory cache.
-        let image = await source.byPreparingThumbnail(ofSize: CGSize(width: 360, height: 540)) ?? source
+        guard let client = api, let account = downloads.account else { return nil }
+        var data = try? await coverDisk.data(id, account: account)
+        var image: UIImage?
+        var fetched = false
+        if let data { image = await Self.coverThumbnail(data) }
+        if image == nil {
+            data = try? await client.cover(id)
+            fetched = true
+            if let data { image = await Self.coverThumbnail(data) }
+        }
+        guard let image, let data, !Task.isCancelled, revision == coverRevision,
+              client === api, account == downloads.account else { return nil }
+        // Enqueue before logout can clear the account cache. Late network responses
+        // are fenced above, and the actor serializes save/remove on disk.
+        if fetched { try? await coverDisk.save(data, id: id, account: account) }
+        guard !Task.isCancelled, revision == coverRevision, client === api else { return nil }
         covers.setObject(image, forKey: id as NSString, cost: image.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
+        coverDates[id] = Date()
         return image
+    }
+    private nonisolated static func coverThumbnail(_ data: Data) async -> UIImage? {
+        await Task.detached(priority: .utility) {
+            guard let source = CGImageSourceCreateWithData(data as CFData,
+                [kCGImageSourceShouldCache: false] as CFDictionary),
+                let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 600,
+                    kCGImageSourceShouldCacheImmediately: true
+                ] as CFDictionary) else { return nil }
+            return UIImage(cgImage: thumbnail)
+        }.value
     }
     func position(_ book: String) -> Int {
         progress.position(book: book, instance: progressInstance)
@@ -417,7 +464,7 @@ final class AppModel: ObservableObject {
     func startDemo() async {
         guard !busy, !switchingOffline else { return }
         await downloads.activate(OfflineAccount(instance: DemoCatalog.instanceID, username: "demo"))
-        api = nil; isDemo = true; offlineMode = false; automaticOffline = false; library = DemoCatalog.series; covers.removeAllObjects()
+        api = nil; isDemo = true; offlineMode = false; automaticOffline = false; library = DemoCatalog.series; resetCovers()
         followingWritable = false; pushNotificationsAvailable = false; restoreFollows(); pendingPushSeriesID = nil
         resetBookmarkSession(); readingStateWritable = false; bookmarks = demoBookmarks.all()
         await cacheBookmarks()
@@ -579,9 +626,17 @@ final class AppModel: ObservableObject {
         catch { await fallBackOffline(error, client: api); throw error }
     }
     func page(_ id: String, at index: Int) async throws -> UIImage {
+        guard !clearingImages else { throw CancellationError() }
+        let cacheKey = "\(id):\(index)" as NSString
+        if !offlineMode, api != nil, let cached = pages.object(forKey: cacheKey) { return cached }
+        let generation = imageSession
         if let account = downloads.account, let data = try await downloads.store.page(id, index: index, account: account) {
             guard let image = UIImage(data: data) else { throw OfflineError.incomplete }
-            return image
+            let prepared = await image.byPreparingForDisplay() ?? image
+            try Task.checkCancellation()
+            guard generation == imageSession else { throw CancellationError() }
+            pages.setObject(prepared, forKey: cacheKey, cost: prepared.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
+            return prepared
         }
         if offlineMode { throw OfflineError.notDownloaded }
         if isDemo { return DemoArtwork.page(try DemoCatalog.page(id, at: index)) }
@@ -590,6 +645,10 @@ final class AppModel: ObservableObject {
         do { data = try await api.data("/v1/books/\(try Endpoint.identifier(id))/pages/\(index)") }
         catch { await fallBackOffline(error, client: api); throw error }
         guard let image = UIImage(data: data) else { throw ReaderError.unavailable(415) }
-        return image
+        let prepared = await image.byPreparingForDisplay() ?? image
+        try Task.checkCancellation()
+        guard generation == imageSession, api === self.api else { throw CancellationError() }
+        pages.setObject(prepared, forKey: cacheKey, cost: prepared.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
+        return prepared
     }
 }

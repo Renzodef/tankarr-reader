@@ -292,7 +292,7 @@ private struct ReaderChapterView: View {
         let requested = page
         do {
             // Debounce a moving slider; keep just the displayed page in memory.
-            try await Task.sleep(for: .milliseconds(150))
+            try await Task.sleep(for: .milliseconds(40))
             let decoded = try await model.page(bookID, at: requested)
             try Task.checkCancellation()
             image = decoded; loadedPage = requested; model.savePosition(requested, book: bookID); loading = false
