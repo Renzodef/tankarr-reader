@@ -111,6 +111,26 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
     }
 
+    func testFindAuthorAndBrowseTheirSeries() {
+        let search = app.searchFields.firstMatch
+        search.tap()
+        search.typeText("Tankarr Reader")
+        let lighthouse = app.staticTexts["Segnali dal faro"].firstMatch
+        XCTAssertTrue(lighthouse.waitForExistence(timeout: 5))
+        lighthouse.tap()
+
+        let author = "Tankarr Reader · Demo"
+        let authorLink = app.staticTexts[author].firstMatch
+        XCTAssertTrue(authorLink.waitForExistence(timeout: 5))
+        authorLink.tap()
+
+        XCTAssertTrue(app.navigationBars[author].waitForExistence(timeout: 5))
+        let garden = app.staticTexts["Il giardino sospeso"].firstMatch
+        XCTAssertTrue(garden.waitForExistence(timeout: 5))
+        garden.tap()
+        XCTAssertTrue(app.navigationBars["Il giardino sospeso"].waitForExistence(timeout: 5))
+    }
+
     func testFollowedSeriesFilterAndPersistence() {
         app.staticTexts["Segnali dal faro"].firstMatch.tap()
         let button = app.buttons["series-follow"]
