@@ -20,6 +20,7 @@ struct LibraryView: View {
         return rows.filter { $0.matchesLibrarySearch(search) }
     }
     var body: some View {
+        let filtered = self.filtered
         NavigationStack(path: $path) {
             ScrollView {
                 if let error = model.error {
@@ -146,7 +147,7 @@ private struct LibrarySeriesGrid: View {
                         CoverView(series: entry)
                         Text(entry.title).font(.headline).lineLimit(2, reservesSpace: true).foregroundStyle(.primary)
                         Text(L10n.format(model.offlineMode ? "%d file scaricati" : "%d file disponibili",
-                            model.offlineMode ? downloads.items.filter { $0.complete && $0.series.id == entry.id }.count : entry.booksCount))
+                            model.offlineMode ? downloads.completedCounts[entry.id, default: 0] : entry.booksCount))
                             .font(.caption).foregroundStyle(.secondary)
                     }.frame(maxWidth: .infinity, alignment: .topLeading)
                 }.buttonStyle(.plain)

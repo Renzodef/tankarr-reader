@@ -4,7 +4,14 @@ import ImageIO
 
 @MainActor
 final class DownloadManager: ObservableObject {
-    @Published private(set) var items: [OfflineDownload] = []
+    @Published private(set) var items: [OfflineDownload] = [] {
+        didSet {
+            var counts: [String: Int] = [:]
+            for item in items where item.complete { counts[item.series.id, default: 0] += 1 }
+            completedCounts = counts
+        }
+    }
+    private(set) var completedCounts: [String: Int] = [:]
     @Published private(set) var activeID: String?
     @Published private(set) var queuedIDs: Set<String> = []
     @Published private(set) var failures: [String: Error] = [:]

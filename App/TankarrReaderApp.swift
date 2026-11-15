@@ -137,6 +137,7 @@ final class AppModel: ObservableObject {
     private let demoBookmarks = DemoBookmarkStore()
     private let networkMonitor = NWPathMonitor()
     private var networkAvailable: Bool?
+    private var networkAllowsPrefetch = false
     private var switchingOffline = false
     private var clearingImages = false
 
@@ -151,7 +152,11 @@ final class AppModel: ObservableObject {
            let saved = try? JSONDecoder().decode(ServerProfile.self, from: data) { profile = saved }
         networkMonitor.pathUpdateHandler = { [weak self] path in
             let available = path.status != .unsatisfied
-            Task { @MainActor [weak self] in await self?.networkChanged(available: available) }
+            let allowsPrefetch = path.status == .satisfied && !path.isConstrained && !path.isExpensive
+            Task { @MainActor [weak self] in
+                self?.networkAllowsPrefetch = allowsPrefetch
+                await self?.networkChanged(available: available)
+            }
         }
         networkMonitor.start(queue: DispatchQueue(label: "reader-connectivity"))
     }
@@ -625,10 +630,23 @@ final class AppModel: ObservableObject {
         do { return try await api.get("/v1/books/\(try Endpoint.identifier(id))") }
         catch { await fallBackOffline(error, client: api); throw error }
     }
-    func page(_ id: String, at index: Int) async throws -> UIImage {
+    func prepareNextPage(_ id: String, after index: Int, pageCount: Int) async {
+        guard index >= 0, index < pageCount - 1,
+              !ProcessInfo.processInfo.isLowPowerModeEnabled,
+              networkAllowsPrefetch || downloads.item(id)?.complete == true else { return }
+        let generation = imageSession
+        do {
+            // Let navigation settle before spending bandwidth on one nearby page.
+            try await Task.sleep(for: .milliseconds(150))
+            guard generation == imageSession else { return }
+            _ = try await page(id, at: index + 1, speculative: true)
+        } catch { /* Optional work must not interrupt reading or switch accounts/offline mode. */ }
+    }
+    func page(_ id: String, at index: Int, speculative: Bool = false) async throws -> UIImage {
+        try Task.checkCancellation()
         guard !clearingImages else { throw CancellationError() }
         let cacheKey = "\(id):\(index)" as NSString
-        if !offlineMode, api != nil, let cached = pages.object(forKey: cacheKey) { return cached }
+        if (!offlineMode || downloads.item(id)?.complete == true), let cached = pages.object(forKey: cacheKey) { return cached }
         let generation = imageSession
         if let account = downloads.account, let data = try await downloads.store.page(id, index: index, account: account) {
             guard let image = UIImage(data: data) else { throw OfflineError.incomplete }
@@ -643,7 +661,10 @@ final class AppModel: ObservableObject {
         guard let api else { throw ReaderError.unavailable(0) }
         let data: Data
         do { data = try await api.data("/v1/books/\(try Endpoint.identifier(id))/pages/\(index)") }
-        catch { await fallBackOffline(error, client: api); throw error }
+        catch {
+            if !speculative { await fallBackOffline(error, client: api) }
+            throw error
+        }
         guard let image = UIImage(data: data) else { throw ReaderError.unavailable(415) }
         let prepared = await image.byPreparingForDisplay() ?? image
         try Task.checkCancellation()
