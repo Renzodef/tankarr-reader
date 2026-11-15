@@ -26,6 +26,7 @@ private struct ReaderChapterView: View {
     let onOpenChapter: (ReaderBook, Int) -> Void
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var book: ReaderBook?
     @State private var page = 0
     @State private var image: UIImage?
@@ -55,6 +56,10 @@ private struct ReaderChapterView: View {
         }.preferredColorScheme(.dark)
             .task(id: "metadata-\(retry)") { if book == nil { await loadBook() } }
             .task(id: "\(book?.id ?? "")-\(page)-\(retry)-\(continuous)") { if book != nil && !continuous { await loadPage() } }
+            .task(id: "prefetch-\(page)-\(loadedPage ?? -1)-\(continuous)-\(scenePhase)-\(model.imageSession)") {
+                guard let book, !continuous, loadedPage == page, scenePhase == .active else { return }
+                await model.prepareNextPage(bookID, after: page, pageCount: book.pageCount)
+            }
             .onChange(of: options) { _, value in
                 if let book { model.saveReadingOptions(value, book: book) }
             }
@@ -291,7 +296,7 @@ private struct ReaderChapterView: View {
         guard model.canBrowse else { return }; loading = true; error = nil
         let requested = page
         do {
-            // Debounce a moving slider; keep just the displayed page in memory.
+            // Debounce a moving slider; the model bounds the nearby-page cache.
             try await Task.sleep(for: .milliseconds(40))
             let decoded = try await model.page(bookID, at: requested)
             try Task.checkCancellation()
