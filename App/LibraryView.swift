@@ -268,7 +268,11 @@ struct CoverView: View {
             }.clipShape(RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .ignore).accessibilityLabel(series.title)
             .accessibilityIdentifier("cover-\(series.id)")
-            .task(id: "\(series.id)-\(model.offlineMode)") { image = await model.cover(series.id) }
+            .onChange(of: model.imageSession) { _, _ in image = nil }
+            .task(id: "\(series.id)-\(model.coverRevision)") {
+                let loaded = await model.cover(series.id)
+                if !Task.isCancelled { image = loaded }
+            }
     }
 }
 

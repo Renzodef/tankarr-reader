@@ -51,6 +51,35 @@ private final class PageServer: @unchecked Sendable {
 }
 
 final class OfflineNetworkTests: XCTestCase {
+    func testCoverRetriesTemporaryFailureAndRecovers() async throws {
+        var attempts = 0
+        let server = try PageServer { _ in
+            attempts += 1
+            if attempts == 1 {
+                return "HTTP/1.1 503 Busy\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            }
+            return "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 5\r\nConnection: close\r\n\r\ncover"
+        }
+        defer { server.stop() }
+        let api = ReaderAPI(base: URL(string: "http://127.0.0.1:\(server.port)")!, username: "fixture", password: "fixture-only")
+        let data = try await api.cover("series")
+        XCTAssertEqual(data, Data("cover".utf8))
+        XCTAssertEqual(server.requests, ["/v1/series/series/cover", "/v1/series/series/cover"])
+    }
+
+    func testCoverDoesNotRetryMissingOrUnauthorizedOrRedirect() async throws {
+        for status in [302, 401, 404] {
+            let server = try PageServer { _ in
+                "HTTP/1.1 \(status) Test\r\nLocation: https://example.invalid/private\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            }
+            defer { server.stop() }
+            let api = ReaderAPI(base: URL(string: "http://127.0.0.1:\(server.port)")!, username: "fixture", password: "fixture-only")
+            do { _ = try await api.cover("series"); XCTFail("Must reject") }
+            catch { XCTAssertEqual(error as? ReaderError, status == 401 ? .unauthorized : .unavailable(status)) }
+            XCTAssertEqual(server.requests.count, 1)
+        }
+    }
+
     func testHTTPPagesBecomeOfflineBookAndSurviveServerShutdown() async throws {
         let server = try PageServer { path in
             let body = "downloaded-" + path

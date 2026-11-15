@@ -263,6 +263,8 @@ public final class ReaderAPI: @unchecked Sendable {
     private let username: String
     private let password: String
     private let session: URLSession
+    private let coverSession: URLSession
+    private let coverGate = ReaderRequestGate(limit: 2)
     public init(base: URL, username: String, password: String) {
         self.base = base; self.username = username; self.password = password
         let config = URLSessionConfiguration.ephemeral
@@ -271,8 +273,37 @@ public final class ReaderAPI: @unchecked Sendable {
         config.urlCache = nil
         config.httpMaximumConnectionsPerHost = 4
         session = URLSession(configuration: config, delegate: RefuseRedirects(), delegateQueue: nil)
+        config.httpMaximumConnectionsPerHost = 2
+        coverSession = URLSession(configuration: config, delegate: RefuseRedirects(), delegateQueue: nil)
     }
-    deinit { session.invalidateAndCancel() }
+    deinit { session.invalidateAndCancel(); coverSession.invalidateAndCancel() }
+
+    public func cover(_ id: String) async throws -> Data {
+        let path = "/v1/series/\(try Endpoint.identifier(id))/cover"
+        for attempt in 0..<3 {
+            try await coverGate.acquire()
+            do {
+                try Task.checkCancellation()
+                let request = try Endpoint.request(base: base, path: path, username: username,
+                                                   password: password, timeout: 20)
+                let (data, response) = try await coverSession.data(for: request)
+                guard let http = response as? HTTPURLResponse else { throw ReaderError.unavailable(0) }
+                if http.statusCode == 401 { throw ReaderError.unauthorized }
+                guard http.statusCode == 200 else { throw ReaderError.unavailable(http.statusCode) }
+                await coverGate.release()
+                return data
+            } catch {
+                await coverGate.release()
+                try Task.checkCancellation()
+                let transient = [ReaderError.unavailable(429), .unavailable(502), .unavailable(503), .unavailable(504)]
+                let retryable = transient.contains(where: { $0 == error as? ReaderError })
+                    || (error as? URLError)?.code == .timedOut
+                guard attempt < 2, retryable else { throw error }
+                try await Task.sleep(for: .milliseconds(300 * (attempt + 1)))
+            }
+        }
+        throw ReaderError.unavailable(503)
+    }
     public func data(_ path: String, timeout: TimeInterval = 35, method: String = "GET", jsonBody: Data? = nil, reload: Bool = false) async throws -> Data {
         var request = try Endpoint.request(base: base, path: path, username: username, password: password,
                                            timeout: timeout, method: method, jsonBody: jsonBody)
