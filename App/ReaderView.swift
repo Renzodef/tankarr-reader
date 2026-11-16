@@ -56,9 +56,6 @@ private struct ReaderChapterView: View {
         }.preferredColorScheme(.dark)
             .task(id: "metadata-\(retry)") { if book == nil { await loadBook() } }
             .task(id: "\(book?.id ?? "")-\(book?.contentRevision ?? "")-\(page)-\(retry)-\(continuous)") { if book != nil && !continuous { await loadPage() } }
-            .task(id: "save-\(book?.id ?? "")-\(book?.contentRevision ?? "")-\(scenePhase)-\(model.canSaveOpenedVolume)-\(model.keepOpenedVolumes)-\(model.keepReadPages)") {
-                if scenePhase == .active, let book { await model.saveOpenedVolume(book, startingAt: page) }
-            }
             .task(id: "prefetch-\(page)-\(loadedPage ?? -1)-\(continuous)-\(scenePhase)-\(model.imageSession)") {
                 guard let book, !continuous, loadedPage == page, scenePhase == .active else { return }
                 await model.prepareNextPage(bookID, after: page, pageCount: book.pageCount)
