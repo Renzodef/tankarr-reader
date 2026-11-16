@@ -96,7 +96,7 @@ final class ReaderUITests: XCTestCase {
         app.buttons["Close book"].tap()
         app.navigationBars.buttons.firstMatch.tap()
 
-        let search = app.searchFields.firstMatch
+        let search = librarySearchField
         search.tap()
         search.typeText("Atlante")
         XCTAssertTrue(app.staticTexts["Atlante delle nuvole"].firstMatch.waitForExistence(timeout: 5))
@@ -111,8 +111,13 @@ final class ReaderUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["2 / 3"].waitForExistence(timeout: 5))
     }
 
+    private var librarySearchField: XCUIElement {
+        let inline = app.textFields["library-search-field"]
+        return inline.exists ? inline : app.searchFields.firstMatch
+    }
+
     func testFindAuthorAndBrowseTheirSeries() {
-        let search = app.searchFields.firstMatch
+        let search = librarySearchField
         search.tap()
         search.typeText("Tankarr Reader")
         let lighthouse = app.staticTexts["Segnali dal faro"].firstMatch

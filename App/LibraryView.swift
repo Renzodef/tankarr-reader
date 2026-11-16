@@ -49,7 +49,7 @@ struct LibraryView: View {
                 }
             }
             .navigationTitle("Tankarr")
-            .searchable(text: $search, prompt: L10n.text("Cerca per titolo o autore"))
+            .modifier(LibrarySearch(text: $search))
             .scrollBounceBehavior(.always, axes: .vertical)
             .refreshable { await model.refresh() }
             .navigationDestination(for: LibraryDestination.self) { destination in
@@ -130,6 +130,39 @@ struct LibraryView: View {
         model.pendingPushSeriesID = nil
         showBookmarks = false; showDownloads = false; model.showConnection = false
         path = [.series(series)]
+    }
+}
+
+private struct LibrarySearch: ViewModifier {
+    @Binding var text: String
+
+    func body(content: Content) -> some View {
+        if ProcessInfo.processInfo.isiOSAppOnMac {
+            // UIKit's navigation search presentation can trap during window focus on Mac.
+            content.safeAreaInset(edge: .top, spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    TextField(L10n.text("Cerca per titolo o autore"), text: $text)
+                        .textFieldStyle(.plain)
+                        .accessibilityIdentifier("library-search-field")
+                    if !text.isEmpty {
+                        Button { text = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.text("Cancella ricerca"))
+                    }
+                }
+                .padding(9)
+                .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.bar)
+            }
+        } else {
+            content.searchable(text: $text, prompt: L10n.text("Cerca per titolo o autore"))
+        }
     }
 }
 
