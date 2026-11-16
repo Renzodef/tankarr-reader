@@ -42,7 +42,7 @@ final class ReaderCoreTests: XCTestCase {
             XCTAssertThrowsError(try Endpoint.request(base: base, path: path, username: "reader", password: "fixture-password"))
         }
         for id in ["..", "a/b", "%2e", "a?x", "a#x", "valid\n"] { XCTAssertThrowsError(try Endpoint.identifier(id)) }
-        let request = try Endpoint.request(base: base, path: "/v1/books/book-123/pages/0", username: "reader", password: "fixture-password")
+        let request = try Endpoint.request(base: base, path: "/v1/books/translated:book-123/pages/0", username: "reader", password: "fixture-password")
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertNil(request.httpBody)
         XCTAssertEqual(request.url?.host, "reader.example.org")

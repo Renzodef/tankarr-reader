@@ -55,7 +55,10 @@ private struct ReaderChapterView: View {
                 .toolbarBackground(.visible, for: .navigationBar)
         }.preferredColorScheme(.dark)
             .task(id: "metadata-\(retry)") { if book == nil { await loadBook() } }
-            .task(id: "\(book?.id ?? "")-\(page)-\(retry)-\(continuous)") { if book != nil && !continuous { await loadPage() } }
+            .task(id: "\(book?.id ?? "")-\(book?.contentRevision ?? "")-\(page)-\(retry)-\(continuous)") { if book != nil && !continuous { await loadPage() } }
+            .task(id: "save-\(book?.id ?? "")-\(book?.contentRevision ?? "")-\(scenePhase)-\(model.canSaveOpenedVolume)-\(model.keepOpenedVolumes)-\(model.keepReadPages)") {
+                if scenePhase == .active, let book { await model.saveOpenedVolume(book, startingAt: page) }
+            }
             .task(id: "prefetch-\(page)-\(loadedPage ?? -1)-\(continuous)-\(scenePhase)-\(model.imageSession)") {
                 guard let book, !continuous, loadedPage == page, scenePhase == .active else { return }
                 await model.prepareNextPage(bookID, after: page, pageCount: book.pageCount)
@@ -93,6 +96,7 @@ private struct ReaderChapterView: View {
                         loadImage: { index in try await model.page(bookID, at: index) },
                         onVisiblePage: visiblePageChanged,
                         onBoundary: { forward in step(forward ? 1 : -1, fromBoundary: true) })
+                    .id(book.contentRevision)
                 } else if let image {
                     ZoomPage(image: image, identity: "\(bookID):\(loadedPage ?? 0)", axis: axis,
                              rightToLeft: rtl, onStep: { step($0) })
@@ -283,13 +287,20 @@ private struct ReaderChapterView: View {
             if let prefetchedBook { result = prefetchedBook }
             else { result = try await model.book(bookID) }
             guard result.pageCount > 0 else { throw ReaderError.unavailable(422) }
-            // A downloaded book opens immediately, even if the server has just
-            // become unreachable and the last online session is still selected.
-            if model.downloads.item(bookID)?.complete != true { await model.refreshBookmarks() }
             try Task.checkCancellation()
             options = model.readingOptions(result)
             page = model.resumePosition(result, openingPage: openingPage)
             continuousRequestPage = page; book = result
+            if model.downloads.item(bookID)?.complete != true, model.api != nil {
+                if let fresh = try? await model.refreshBook(bookID), !Task.isCancelled {
+                    if fresh.contentRevision != result.contentRevision || fresh.pageCount != result.pageCount {
+                        page = min(page, fresh.pageCount - 1)
+                        continuousRequestPage = page
+                    }
+                    book = fresh
+                }
+                await model.refreshBookmarks()
+            }
         } catch { if !Task.isCancelled { self.error = error.localizedDescription; loading = false } }
     }
     private func loadPage() async {

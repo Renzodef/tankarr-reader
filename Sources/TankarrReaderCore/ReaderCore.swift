@@ -79,14 +79,16 @@ public enum Endpoint {
             (numbers[0] == 172 && (16...31).contains(numbers[1])) ||
             (numbers[0] == 192 && numbers[1] == 168)
     }
+    private static let identifierPattern = "[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}"
+
     public static func identifier(_ value: String) throws -> String {
-        guard value.range(of: "^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$", options: .regularExpression) == value.startIndex..<value.endIndex else { throw ReaderError.invalidIdentifier }
+        guard value.range(of: "^\(identifierPattern)$", options: .regularExpression) == value.startIndex..<value.endIndex else { throw ReaderError.invalidIdentifier }
         return value
     }
     public static func request(base: URL, path: String, username: String, password: String, timeout: TimeInterval = 35,
                                method: String = "GET", jsonBody: Data? = nil) throws -> URLRequest {
         _ = try validate(base.absoluteString)
-        let id = "[A-Za-z0-9][A-Za-z0-9_.-]{0,159}"
+        let id = identifierPattern
         let readable = path.range(of: "^/v1/(status|library|bookmarks|follows|series/\(id)(/(cover|catalogues))?|books/\(id)(/pages/[0-9]+)?)$", options: .regularExpression) != nil
         let bookmark = path.range(of: "^/v1/series/\(id)/bookmark$", options: .regularExpression) != nil
         let follow = path.range(of: "^/v1/series/\(id)/follow$", options: .regularExpression) != nil
@@ -147,6 +149,7 @@ public struct LibrarySeries: Codable, Identifiable, Hashable, Sendable {
     public let language: String
     public let booksCount: Int
     public let coverPath: String
+    public var coverRevision: String? = nil
     public let catalogueLinks: [CatalogueLink]?
 
     public var authorNames: [String] {
@@ -235,6 +238,7 @@ public struct ReaderBook: Codable, Sendable {
     public let pageIndex: Int?
     public let bookmarked: Bool?
     public let bookmarkPageIndex: Int?
+    public var contentRevision: String? = nil
     public init(id: String, seriesTitle: String, title: String, pageCount: Int, direction: String, mode: String,
                 previousId: String?, nextId: String?, seriesId: String? = nil, pageIndex: Int? = nil,
                 bookmarked: Bool? = nil, bookmarkPageIndex: Int? = nil) {
@@ -278,14 +282,15 @@ public final class ReaderAPI: @unchecked Sendable {
     }
     deinit { session.invalidateAndCancel(); coverSession.invalidateAndCancel() }
 
-    public func cover(_ id: String) async throws -> Data {
+    public func cover(_ id: String, reload: Bool = false) async throws -> Data {
         let path = "/v1/series/\(try Endpoint.identifier(id))/cover"
         for attempt in 0..<3 {
             try await coverGate.acquire()
             do {
                 try Task.checkCancellation()
-                let request = try Endpoint.request(base: base, path: path, username: username,
+                var request = try Endpoint.request(base: base, path: path, username: username,
                                                    password: password, timeout: 20)
+                if reload { request.setValue("no-cache", forHTTPHeaderField: "Cache-Control") }
                 let (data, response) = try await coverSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw ReaderError.unavailable(0) }
                 if http.statusCode == 401 { throw ReaderError.unauthorized }
