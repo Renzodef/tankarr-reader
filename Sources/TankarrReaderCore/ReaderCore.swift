@@ -282,14 +282,15 @@ public final class ReaderAPI: @unchecked Sendable {
     }
     deinit { session.invalidateAndCancel(); coverSession.invalidateAndCancel() }
 
-    public func cover(_ id: String, reload: Bool = false) async throws -> Data {
+    public func cover(_ id: String, reload: Bool = false, preloading: Bool = false) async throws -> Data {
         let path = "/v1/series/\(try Endpoint.identifier(id))/cover"
-        for attempt in 0..<3 {
+        let attempts = preloading ? 1 : 3
+        for attempt in 0..<attempts {
             try await coverGate.acquire()
             do {
                 try Task.checkCancellation()
                 var request = try Endpoint.request(base: base, path: path, username: username,
-                                                   password: password, timeout: 20)
+                                                   password: password, timeout: preloading ? 8 : 20)
                 if reload { request.setValue("no-cache", forHTTPHeaderField: "Cache-Control") }
                 let (data, response) = try await coverSession.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw ReaderError.unavailable(0) }
@@ -303,7 +304,7 @@ public final class ReaderAPI: @unchecked Sendable {
                 let transient = [ReaderError.unavailable(429), .unavailable(502), .unavailable(503), .unavailable(504)]
                 let retryable = transient.contains(where: { $0 == error as? ReaderError })
                     || (error as? URLError)?.code == .timedOut
-                guard attempt < 2, retryable else { throw error }
+                guard attempt + 1 < attempts, retryable else { throw error }
                 try await Task.sleep(for: .milliseconds(300 * (attempt + 1)))
             }
         }

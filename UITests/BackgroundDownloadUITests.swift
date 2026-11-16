@@ -18,9 +18,11 @@ private final class BackgroundReaderServer: @unchecked Sendable {
     let pages = 8
     private(set) var port: UInt16 = 0
     private let png: Data
+    private let extraSeries: Int
     var delay: Double = 5
 
-    init() throws {
+    init(extraSeries: Int = 0) throws {
+        self.extraSeries = extraSeries
         png = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 360)).pngData { context in
             UIColor.systemBlue.setFill(); context.fill(CGRect(x: 0, y: 0, width: 240, height: 360))
         }
@@ -113,7 +115,16 @@ private final class BackgroundReaderServer: @unchecked Sendable {
         case "/v1/bookmarks":
             lock.lock(); let items = savedBookmark.map { [$0] } ?? []; lock.unlock()
             value = ["items": items]
-        case "/v1/library": value = ["items": [series]]
+        case "/v1/library":
+            let additional = (0..<extraSeries).map { index in
+                let id = "cover-fixture-\(index)"
+                var item = series
+                item["id"] = id
+                item["title"] = "Cover fixture \(index)"
+                item["cover_path"] = "/v1/series/\(id)/cover"
+                return item
+            }
+            value = ["items": [series] + additional]
         case "/v1/series/background-series":
             value = ["books": (1...2).map { n in ["id": "bg-book-\(n)", "label": "Capitolo \(n)", "title": "Fixture \(n)",
                 "volume": "", "chapter": String(n), "unit": "chapter", "language": "it"] }]
@@ -425,5 +436,23 @@ final class BackgroundDownloadUITests: XCTestCase {
         app.buttons["Bookmarks"].tap()
         XCTAssertTrue(app.staticTexts["No bookmarks"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["bookmark-background-series"].exists)
+    }
+}
+
+
+final class StartupCoverUITests: XCTestCase {
+    func testLaunchFetchesCoversBelowTheFoldWithoutScrolling() throws {
+        let server = try BackgroundReaderServer(extraSeries: 80)
+        defer { server.stop() }
+        let app = XCUIApplication()
+        app.launchArguments = ["--background-download-test", server.address]
+        app.launch()
+        defer { app.terminate() }
+
+        XCTAssertTrue(app.staticTexts["Background download fixture"].firstMatch.waitForExistence(timeout: 15))
+        let lastCover = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            server.requests.contains { $0.0 == "/v1/series/cover-fixture-79/cover" }
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [lastCover], timeout: 30), .completed)
     }
 }

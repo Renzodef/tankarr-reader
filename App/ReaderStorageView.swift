@@ -14,11 +14,11 @@ struct ReaderStorageView: View {
             Section {
                 LabeledContent(L10n.text("Totale sul dispositivo"),
                                value: size(sizes.values.reduce(downloads.totalBytes, +)))
-                Toggle(L10n.text("Conserva le pagine lette"), isOn: $model.keepReadPages)
+                Toggle(L10n.text("Salva le pagine che apri"), isOn: $model.keepReadPages)
                 Toggle(L10n.text("Conserva i volumi aperti su Wi-Fi"), isOn: $model.keepOpenedVolumes)
                     .disabled(!model.keepReadPages)
             } footer: {
-                Text(L10n.text("Catalogo e copertine restano sul dispositivo. Le pagine possono occupare molto spazio. Puoi rimuoverle qui quando vuoi."))
+                Text(L10n.text("Le tavole che apri vengono salvate sul dispositivo per rileggerle subito, anche senza rete. Puoi eliminare le copie da Pagine salvate."))
             }
 
             ForEach(ReaderStorageSection.allCases, id: \.self) { section in

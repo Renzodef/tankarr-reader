@@ -17,6 +17,8 @@ struct TankarrReaderApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task { await model.becameActive() }
+                    } else if phase == .background {
+                        model.enteredBackground()
                     }
                 }
         }
@@ -137,12 +139,18 @@ final class AppModel: ObservableObject {
     @Published private(set) var localStorageRevision = UUID()
     private var coverWarmup: Task<Void, Never>?
     private var coverWarmupPaused = false
+    private var inBackground = false
     private var lastLibrarySync: Date?
     private var coverVersions: [String: String] = [:]
     private var bookVersions: [String: String] = [:]
 
+    private func stopCoverWarmup() {
+        coverWarmup?.cancel()
+        coverWarmup = nil
+    }
+
     private func resetCovers() {
-        coverWarmup?.cancel(); coverWarmup = nil
+        stopCoverWarmup()
         covers.removeAllObjects(); pages.removeAllObjects(); bookVersions.removeAll()
         coverRevision = UUID(); imageSession = UUID()
     }
@@ -150,9 +158,12 @@ final class AppModel: ObservableObject {
         let changed = Dictionary(items.compactMap { item in item.coverRevision.map { (item.id, $0) } },
                                  uniquingKeysWith: { first, _ in first })
         let artworkChanged = coverVersions != changed
+        let seriesChanged = library.map(\.id) != items.map(\.id)
+        if artworkChanged || seriesChanged { stopCoverWarmup() }
         coverVersions = changed
         if library != items { library = items }
         if artworkChanged { coverRevision = UUID() }
+        warmCovers()
     }
     private func remember<T: Encodable>(_ value: T, key: String, account: OfflineAccount, generation: UUID) async {
         guard let data = try? JSONEncoder().encode(value) else { return }
@@ -187,8 +198,6 @@ final class AppModel: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.networkAllowsPrefetch = allowsPrefetch
                 self?.canSaveOpenedVolume = allowsPrefetch && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
-                if allowsPrefetch { self?.warmCovers() }
-                else { self?.coverWarmup?.cancel(); self?.coverWarmup = nil }
                 await self?.networkChanged(available: available)
             }
         }
@@ -197,6 +206,8 @@ final class AppModel: ObservableObject {
     private func networkChanged(available: Bool) async {
         let changed = networkAvailable != available
         networkAvailable = available
+        if available { warmCovers() }
+        else { stopCoverWarmup() }
         guard changed, restored, !isDemo, !busy else { return }
         if available {
             if automaticOffline { await reconnect() }
@@ -204,7 +215,13 @@ final class AppModel: ObservableObject {
             await useOffline(automatic: true)
         }
     }
+    func enteredBackground() {
+        inBackground = true
+        stopCoverWarmup()
+    }
+
     func becameActive() async {
+        inBackground = false
         if appLanguage == .system { objectWillChange.send() }
         if automaticOffline, networkAvailable != false { await reconnect() }
         warmCovers()
@@ -308,7 +325,7 @@ final class AppModel: ObservableObject {
             await downloads.configureBackground(api: client)
             let accountChanged = isDemo || offlineAccount(profile) != downloads.account
             let wasDisconnected = api == nil
-            coverWarmup?.cancel(); coverWarmup = nil
+            stopCoverWarmup()
             profile = accepted; api = client; isDemo = false; offlineMode = false; automaticOffline = false
             if accountChanged { resetCovers(); coverWarmupPaused = false }
             if wasDisconnected { coverRevision = UUID() }
@@ -317,7 +334,6 @@ final class AppModel: ObservableObject {
             if let account = downloads.account {
                 await remember(result.items, key: "library", account: account, generation: storageGeneration)
             }
-            warmCovers()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
             followingWritable = status.followingWritable == true
             pushNotificationsAvailable = status.pushNotificationsAvailable == true
@@ -369,7 +385,6 @@ final class AppModel: ObservableObject {
             if let account = downloads.account {
                 await remember(result.items, key: "library", account: account, generation: storageGeneration)
             }
-            warmCovers()
             await refreshBookmarks(); await refreshFollows()
             if force { refreshNotice = L10n.text("Tankarr aggiornato") }
         } catch {
@@ -492,9 +507,9 @@ final class AppModel: ObservableObject {
         return image
     }
     private func fetchCover(_ id: String, revision: String?, account: OfflineAccount,
-                            client: ReaderAPI, force: Bool = false, requireSave: Bool = true) async throws -> Data {
+                            client: ReaderAPI, force: Bool = false, requireSave: Bool = true, preloading: Bool = false) async throws -> Data {
         let generation = await localStorage.generation()
-        let data = try await client.cover(id, reload: force || revision != nil)
+        let data = try await client.cover(id, reload: force || revision != nil, preloading: preloading)
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0 else { throw ReaderError.unavailable(415) }
         try Task.checkCancellation()
@@ -511,19 +526,27 @@ final class AppModel: ObservableObject {
     }
     private func warmCovers() {
         guard coverWarmup == nil, !coverWarmupPaused, storageRefreshProgress == nil, !clearingImages,
-              networkAllowsPrefetch, !isDemo, !offlineMode,
-              !ProcessInfo.processInfo.isLowPowerModeEnabled,
+              networkAvailable != false, !inBackground, !isDemo, !offlineMode, !library.isEmpty,
               let client = api, let account = downloads.account else { return }
         let items = library
-        coverWarmup = Task { [weak self] in
+        // One request at a time leaves the other cover connection available
+        // for the visible grid. The pass is independent of the visible cells.
+        coverWarmup = Task(priority: .utility) { [weak self] in
             guard let self else { return }
-            defer { if !Task.isCancelled { coverWarmup = nil } }
+            var saved = false
+            defer {
+                if !Task.isCancelled {
+                    coverWarmup = nil
+                    if saved { localStorageRevision = UUID() }
+                }
+            }
             for item in items {
                 guard !Task.isCancelled, client === api, account == downloads.account else { return }
                 if await localStorage.contains(.covers, item.id, account: account, revision: item.coverRevision) { continue }
                 do {
-                    _ = try await fetchCover(item.id, revision: item.coverRevision, account: account, client: client)
-                    try await Task.sleep(for: .milliseconds(120))
+                    _ = try await fetchCover(item.id, revision: item.coverRevision, account: account,
+                                             client: client, preloading: true)
+                    saved = true
                 } catch OfflineError.lowSpace { return }
                 catch { if Task.isCancelled { return } }
             }
@@ -547,11 +570,12 @@ final class AppModel: ObservableObject {
     func refreshSaved() async {
         guard let client = api, let account = downloads.account, !offlineMode, !isDemo,
               !busy, !refreshing, !clearingImages, storageRefreshProgress == nil else { return }
-        coverWarmup?.cancel(); coverWarmup = nil
+        stopCoverWarmup()
         coverWarmupPaused = false
         storageRefreshProgress = 0; storageNotice = nil
         defer {
             storageRefreshProgress = nil; coverRevision = UUID(); localStorageRevision = UUID()
+            warmCovers()
         }
         do {
             let generation = await localStorage.generation()
