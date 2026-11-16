@@ -60,28 +60,28 @@ final class ReaderPerformanceTests: XCTestCase {
         XCTAssertNil(otherAccount)
     }
 
-    func testUpdatedBookReplacesSavedPagesAndDeletionRejectsLateWrites() async throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: root) }
+    func testLegacyPageCleanupPreservesCoversAndExplicitDownloads() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let root = base.appendingPathComponent("SavedLibrary")
         let account = OfflineAccount(instance: "one", username: "reader")
         let storage = ReaderLocalStorage(root: root)
         let generation = await storage.generation()
-        let page = Data("page".utf8)
-        try await storage.write(page, to: .pages, key: "1", account: account,
-                                generation: generation, group: "book", revision: "original")
-        try await storage.write(page, to: .pages, key: "2", account: account,
-                                generation: generation, group: "book", revision: "updated")
-        let removed = await storage.read(.pages, "1", account: account, group: "book")
-        XCTAssertNil(removed)
-        let sizes = await storage.sizes(account: account)
-        XCTAssertGreaterThan(sizes[.pages, default: 0], 0)
-        try await storage.clear(.pages, account: account)
-        do {
-            try await storage.write(page, to: .pages, key: "2", account: account,
-                                    generation: generation, group: "book", revision: "updated")
-            XCTFail("A late result recreated deleted pages")
-        } catch is CancellationError {}
-        let afterClear = await storage.sizes(account: account)
-        XCTAssertEqual(afterClear[.pages], 0)
+        let bytes = Data("image".utf8)
+        try await storage.write(bytes, to: .covers, key: "series", account: account, generation: generation)
+        let legacyPages = root.appendingPathComponent(account.key).appendingPathComponent("pages")
+        let explicitDownload = base.appendingPathComponent("OfflineDownloads").appendingPathComponent(account.key)
+        for folder in [legacyPages, explicitDownload] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try bytes.write(to: folder.appendingPathComponent("page"))
+        }
+
+        storage.removeLegacyPages()
+        storage.removeLegacyPages()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacyPages.path))
+        XCTAssertEqual(try Data(contentsOf: explicitDownload.appendingPathComponent("page")), bytes)
+        let cover = await storage.read(.covers, "series", account: account)
+        XCTAssertEqual(cover, bytes)
     }
 }

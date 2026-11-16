@@ -127,13 +127,6 @@ final class AppModel: ObservableObject {
     private let pages = NSCache<NSString, UIImage>()
     let localStorage = ReaderLocalStorage(root: FileManager.default.urls(for: .applicationSupportDirectory,
         in: .userDomainMask)[0].appendingPathComponent("SavedLibrary", isDirectory: true))
-    @Published var keepReadPages = UserDefaults.standard.object(forKey: "keepReadPages") as? Bool ?? true {
-        didSet { UserDefaults.standard.set(keepReadPages, forKey: "keepReadPages") }
-    }
-    @Published var keepOpenedVolumes = UserDefaults.standard.bool(forKey: "keepOpenedVolumes") {
-        didSet { UserDefaults.standard.set(keepOpenedVolumes, forKey: "keepOpenedVolumes") }
-    }
-    @Published private(set) var canSaveOpenedVolume = false
     @Published private(set) var storageNotice: String?
     @Published private(set) var storageRefreshProgress: Int?
     @Published private(set) var localStorageRevision = UUID()
@@ -197,7 +190,6 @@ final class AppModel: ObservableObject {
             let allowsPrefetch = path.status == .satisfied && !path.isConstrained && !path.isExpensive
             Task { @MainActor [weak self] in
                 self?.networkAllowsPrefetch = allowsPrefetch
-                self?.canSaveOpenedVolume = allowsPrefetch && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
                 await self?.networkChanged(available: available)
             }
         }
@@ -249,6 +241,9 @@ final class AppModel: ObservableObject {
     }
     func restore() async {
         guard !restored else { return }; restored = true
+        Task.detached(priority: .utility) { [localStorage] in
+            localStorage.removeLegacyPages()
+        }
         #if DEBUG
         if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "--background-download-test"),
            ProcessInfo.processInfo.arguments.indices.contains(index + 1) {
@@ -803,7 +798,7 @@ final class AppModel: ObservableObject {
     func book(_ id: String) async throws -> ReaderBook {
         if let account = downloads.account, let downloaded = try await downloads.store.book(id, account: account) { return downloaded }
         if isDemo && !offlineMode { return try DemoCatalog.book(id) }
-        if let account = downloads.account, !offlineMode || automaticOffline,
+        if let account = downloads.account, !offlineMode,
            let book = await recalled(ReaderBook.self, key: "book-\(id)", account: account) {
             bookVersions[id] = book.contentRevision
             return book
@@ -825,41 +820,6 @@ final class AppModel: ObservableObject {
             return book
         } catch { await fallBackOffline(error, client: api); throw error }
     }
-    func saveOpenedVolume(_ book: ReaderBook, startingAt start: Int) async {
-        guard keepReadPages, keepOpenedVolumes, canSaveOpenedVolume, !offlineMode,
-              !ProcessInfo.processInfo.isLowPowerModeEnabled,
-              let client = api, let account = downloads.account,
-              downloads.item(book.id)?.complete != true else { return }
-        let bookID = book.id
-        let revision = book.contentRevision
-        let generation = await localStorage.generation()
-        let first = min(max(start, 0), book.pageCount)
-        do {
-            try await Task.sleep(for: .seconds(1))
-            for range in [first..<book.pageCount, 0..<first] {
-                for index in range {
-                    try Task.checkCancellation()
-                    guard keepReadPages, keepOpenedVolumes, canSaveOpenedVolume,
-                          !ProcessInfo.processInfo.isLowPowerModeEnabled,
-                          client === api, account == downloads.account, !clearingImages,
-                          bookVersions[bookID] == revision, downloads.item(bookID)?.complete != true else { return }
-                    let key = String(index)
-                    if await localStorage.contains(.pages, key, account: account, group: bookID, revision: revision) { continue }
-                    let data = try await client.downloadPage(book: bookID, index: index)
-                    try Task.checkCancellation()
-                    guard client === api, bookVersions[bookID] == revision, keepReadPages, keepOpenedVolumes,
-                          canSaveOpenedVolume, !clearingImages else { return }
-                    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                          CGImageSourceGetCount(source) > 0 else { continue }
-                    try await localStorage.write(data, to: .pages, key: key, account: account,
-                                                 generation: generation, group: bookID, revision: revision)
-                    try await Task.sleep(for: .milliseconds(180))
-                }
-            }
-        } catch OfflineError.lowSpace {
-            storageNotice = OfflineError.lowSpace.localizedDescription
-        } catch { /* Speculative work resumes the next time the book opens. */ }
-    }
     func prepareNextPage(_ id: String, after index: Int, pageCount: Int) async {
         guard index >= 0, index < pageCount - 1,
               !ProcessInfo.processInfo.isLowPowerModeEnabled,
@@ -878,16 +838,12 @@ final class AppModel: ObservableObject {
         let revision = bookVersions[id]
         let downloaded = downloads.item(id)?.complete == true
         let cacheKey = "\(id):\(downloaded):\(revision ?? ""):\(index)" as NSString
-        if (!offlineMode || automaticOffline || downloaded), let cached = pages.object(forKey: cacheKey) { return cached }
+        if (!offlineMode || downloaded), let cached = pages.object(forKey: cacheKey) { return cached }
         let generation = imageSession
-        let storageGeneration = await localStorage.generation()
         let account = downloads.account
         let localCopy: Data?
-        if let account, let data = try await downloads.store.page(id, index: index, account: account) {
-            localCopy = data
-        } else if let account, !offlineMode || automaticOffline {
-            localCopy = await localStorage.read(.pages, String(index), account: account, group: id, revision: revision)
-        } else { localCopy = nil }
+        if let account { localCopy = try await downloads.store.page(id, index: index, account: account) }
+        else { localCopy = nil }
         if isDemo, localCopy == nil, !offlineMode { return DemoArtwork.page(try DemoCatalog.page(id, at: index)) }
         let client = api
         let data: Data
@@ -905,16 +861,6 @@ final class AppModel: ObservableObject {
         try Task.checkCancellation()
         guard generation == imageSession, account == downloads.account, revision == bookVersions[id]
         else { throw CancellationError() }
-        if localCopy == nil, keepReadPages, let account {
-            do {
-                try await localStorage.write(data, to: .pages, key: String(index), account: account,
-                                             generation: storageGeneration, group: id, revision: revision)
-            } catch OfflineError.lowSpace {
-                storageNotice = OfflineError.lowSpace.localizedDescription
-            } catch { /* A disk error should not interrupt reading. */ }
-        }
-        try Task.checkCancellation()
-        guard generation == imageSession, revision == bookVersions[id] else { throw CancellationError() }
         pages.setObject(prepared, forKey: cacheKey, cost: prepared.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
         return prepared
     }
