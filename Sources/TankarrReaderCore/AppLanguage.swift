@@ -211,6 +211,7 @@ public enum L10n {
         "Esplora la demo": "Explore the demo",
         "%d file disponibili": "%d files available",
         "Cerca per titolo o autore": "Search by title or author",
+        "Cancella ricerca": "Clear search",
         "Autori": "Authors",
         "Nessuna serie di questo autore": "No series by this author",
         "Segnalibri": "Bookmarks",
