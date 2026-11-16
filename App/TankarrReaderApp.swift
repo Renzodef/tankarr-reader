@@ -103,10 +103,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var offlineMode = false
     @Published private(set) var automaticOffline = false
     let downloads = DownloadManager()
-    var canBrowse: Bool { api != nil || isDemo || offlineMode }
+    var canBrowse: Bool { api != nil || isDemo || offlineMode || !library.isEmpty }
     var canUseBookmarks: Bool { isDemo || (offlineMode ? offlineBookmarkWritable : readingStateWritable) }
     var canViewBookmarks: Bool { offlineMode || canUseBookmarks || !pendingBookmarkSeries.isEmpty }
-    var visibleLibrary: [LibrarySeries] { offlineMode ? downloadedSeries : library }
+    var visibleLibrary: [LibrarySeries] { offlineMode && !automaticOffline ? downloadedSeries : library }
     var visibleBookmarks: [ReaderBookmark] {
         offlineMode ? OfflineLibrary.bookmarks(bookmarks, downloads: downloads.items) : bookmarks
     }
@@ -123,13 +123,44 @@ final class AppModel: ObservableObject {
     private var sessionID = UUID()
     private let covers = NSCache<NSString, UIImage>()
     private let pages = NSCache<NSString, UIImage>()
-    private var coverDates: [String: Date] = [:]
-    private let coverDisk = ReaderCoverCache(root: FileManager.default.urls(for: .cachesDirectory,
-        in: .userDomainMask)[0].appendingPathComponent("ReaderCovers", isDirectory: true))
+    let localStorage = ReaderLocalStorage(root: FileManager.default.urls(for: .applicationSupportDirectory,
+        in: .userDomainMask)[0].appendingPathComponent("SavedLibrary", isDirectory: true))
+    @Published var keepReadPages = UserDefaults.standard.object(forKey: "keepReadPages") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(keepReadPages, forKey: "keepReadPages") }
+    }
+    @Published var keepOpenedVolumes = UserDefaults.standard.bool(forKey: "keepOpenedVolumes") {
+        didSet { UserDefaults.standard.set(keepOpenedVolumes, forKey: "keepOpenedVolumes") }
+    }
+    @Published private(set) var canSaveOpenedVolume = false
+    @Published private(set) var storageNotice: String?
+    @Published private(set) var storageRefreshProgress: Int?
+    @Published private(set) var localStorageRevision = UUID()
+    private var coverWarmup: Task<Void, Never>?
+    private var coverWarmupPaused = false
+    private var lastLibrarySync: Date?
+    private var coverVersions: [String: String] = [:]
+    private var bookVersions: [String: String] = [:]
 
     private func resetCovers() {
-        covers.removeAllObjects(); pages.removeAllObjects(); coverDates.removeAll()
+        coverWarmup?.cancel(); coverWarmup = nil
+        covers.removeAllObjects(); pages.removeAllObjects(); bookVersions.removeAll()
         coverRevision = UUID(); imageSession = UUID()
+    }
+    private func publishLibrary(_ items: [LibrarySeries]) {
+        let changed = Dictionary(items.compactMap { item in item.coverRevision.map { (item.id, $0) } },
+                                 uniquingKeysWith: { first, _ in first })
+        let artworkChanged = coverVersions != changed
+        coverVersions = changed
+        if library != items { library = items }
+        if artworkChanged { coverRevision = UUID() }
+    }
+    private func remember<T: Encodable>(_ value: T, key: String, account: OfflineAccount, generation: UUID) async {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        try? await localStorage.write(data, to: .catalogue, key: key, account: account, generation: generation)
+    }
+    private func recalled<T: Decodable>(_ type: T.Type, key: String, account: OfflineAccount) async -> T? {
+        guard let data = await localStorage.read(.catalogue, key, account: account) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
     private let progress = ReadingProgress()
     private let readingPreferences = ReadingPreferences()
@@ -155,6 +186,9 @@ final class AppModel: ObservableObject {
             let allowsPrefetch = path.status == .satisfied && !path.isConstrained && !path.isExpensive
             Task { @MainActor [weak self] in
                 self?.networkAllowsPrefetch = allowsPrefetch
+                self?.canSaveOpenedVolume = allowsPrefetch && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet))
+                if allowsPrefetch { self?.warmCovers() }
+                else { self?.coverWarmup?.cancel(); self?.coverWarmup = nil }
                 await self?.networkChanged(available: available)
             }
         }
@@ -166,23 +200,27 @@ final class AppModel: ObservableObject {
         guard changed, restored, !isDemo, !busy else { return }
         if available {
             if automaticOffline { await reconnect() }
-        } else if api != nil && !offlineMode && downloads.items.contains(where: \.complete) {
+        } else if api != nil && !offlineMode && canBrowse {
             await useOffline(automatic: true)
         }
     }
     func becameActive() async {
         if appLanguage == .system { objectWillChange.send() }
         if automaticOffline, networkAvailable != false { await reconnect() }
+        warmCovers()
         await resumeBackgroundDownloads()
         await refreshBookmarks()
         await refreshFollows()
         await ReaderPush.shared.synchronize()
+        if let lastLibrarySync, Date().timeIntervalSince(lastLibrarySync) >= 60, !offlineMode, api != nil {
+            await refresh(force: false)
+        }
     }
     private func fallBackOffline(_ error: Error, client: ReaderAPI? = nil) async {
         guard !Task.isCancelled, !busy, !isDemo, !offlineMode,
               client == nil || client === api,
               OfflineConnectivity.isReachabilityFailure(error),
-              downloads.items.contains(where: \.complete) else { return }
+              !library.isEmpty || downloads.items.contains(where: \.complete) else { return }
         await useOffline(automatic: true)
     }
     func setLanguage(_ language: AppLanguage) {
@@ -217,7 +255,12 @@ final class AppModel: ObservableObject {
         await downloads.activate(offlineAccount(profile))
         await restoreCachedBookmarks()
         restoreFollows()
-        if !downloads.items.isEmpty { offlineMode = true; library = downloadedSeries }
+        if let account = downloads.account, PasswordStore.read() != nil,
+           let snapshot = await recalled([LibrarySeries].self, key: "library", account: account), !snapshot.isEmpty {
+            publishLibrary(snapshot)
+        } else if !downloads.items.isEmpty {
+            offlineMode = true; publishLibrary(downloadedSeries)
+        }
         if UserDefaults.standard.bool(forKey: "offlineReading"), downloads.account != nil {
             await useOffline(); return
         }
@@ -250,6 +293,7 @@ final class AppModel: ObservableObject {
         defer { busy = false }
         do {
             let (client, status) = try await ReaderAPI.connect(profile: newProfile, password: password)
+            let storageGeneration = await localStorage.generation()
             let result: LibraryResponse = try await client.get("/v1/library")
             try Task.checkCancellation()
             try PasswordStore.save(password)
@@ -262,7 +306,18 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(client.base.absoluteString, forKey: "downloadEndpoint")
             await downloads.activate(offlineAccount(accepted))
             await downloads.configureBackground(api: client)
-            profile = accepted; api = client; isDemo = false; offlineMode = false; automaticOffline = false; library = result.items; resetCovers()
+            let accountChanged = isDemo || offlineAccount(profile) != downloads.account
+            let wasDisconnected = api == nil
+            coverWarmup?.cancel(); coverWarmup = nil
+            profile = accepted; api = client; isDemo = false; offlineMode = false; automaticOffline = false
+            if accountChanged { resetCovers(); coverWarmupPaused = false }
+            if wasDisconnected { coverRevision = UUID() }
+            lastLibrarySync = Date()
+            publishLibrary(result.items)
+            if let account = downloads.account {
+                await remember(result.items, key: "library", account: account, generation: storageGeneration)
+            }
+            warmCovers()
             resetBookmarkSession(); readingStateWritable = status.readingStateWritable == true
             followingWritable = status.followingWritable == true
             pushNotificationsAvailable = status.pushNotificationsAvailable == true
@@ -286,18 +341,18 @@ final class AppModel: ObservableObject {
             // A failed attempt to connect to another account must not change
             // the current account's mode or its pending bookmark journal.
             if newProfile == profile,
-               OfflineConnectivity.isReachabilityFailure(error), downloads.items.contains(where: \.complete),
+               OfflineConnectivity.isReachabilityFailure(error), canBrowse,
                !UserDefaults.standard.bool(forKey: "offlineReading") {
                 await useOffline(automatic: true)
             }
-            if api == nil, !downloads.items.isEmpty {
+            if api == nil, !offlineMode, !downloads.items.isEmpty {
                 offlineMode = true; library = downloadedSeries; showConnection = false
             }
             return false
         }
     }
-    func refresh() async {
-        guard !busy, !refreshing, !switchingOffline, !Task.isCancelled else { return }
+    func refresh(force: Bool = true) async {
+        guard !busy, !refreshing, !switchingOffline, storageRefreshProgress == nil, !Task.isCancelled else { return }
         // Pull-to-refresh while offline must not silently reconnect.
         if offlineMode { await downloads.reload(); await restoreCachedBookmarks(); return }
         if isDemo { refreshNotice = L10n.text("Tankarr aggiornato"); return }
@@ -305,12 +360,18 @@ final class AppModel: ObservableObject {
         refreshing = true; refreshNotice = nil
         defer { refreshing = false }
         do {
-            let result: LibraryResponse = try await client.get("/v1/library", reload: true)
+            let storageGeneration = await localStorage.generation()
+            let result: LibraryResponse = try await client.get("/v1/library", reload: force)
             try Task.checkCancellation()
             guard client === api, !offlineMode else { return }
-            library = result.items; pages.removeAllObjects(); coverRevision = UUID(); connectionError = nil
+            lastLibrarySync = Date()
+            publishLibrary(result.items); connectionError = nil
+            if let account = downloads.account {
+                await remember(result.items, key: "library", account: account, generation: storageGeneration)
+            }
+            warmCovers()
             await refreshBookmarks(); await refreshFollows()
-            refreshNotice = L10n.text("Tankarr aggiornato")
+            if force { refreshNotice = L10n.text("Tankarr aggiornato") }
         } catch {
             guard !Task.isCancelled, !ReaderCancellation.isCancellation(error), client === api else { return }
             if OfflineConnectivity.isReachabilityFailure(error) {
@@ -351,11 +412,11 @@ final class AppModel: ObservableObject {
             try await downloads.removeAll()
             if let current = downloads.account {
                 try await downloads.store.removeAll(account: current, includingBookmarks: true)
-                try await coverDisk.remove(account: current)
+                try await localStorage.clear(account: current)
             }
             if let saved = offlineAccount(profile), saved != downloads.account {
                 try await downloads.store.removeAll(account: saved, includingBookmarks: true)
-                try await coverDisk.remove(account: saved)
+                try await localStorage.clear(account: saved)
             }
         }
         catch {
@@ -370,7 +431,7 @@ final class AppModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "demoMode")
         UserDefaults.standard.removeObject(forKey: "offlineReading")
         UserDefaults.standard.removeObject(forKey: "downloadEndpoint")
-        api = nil; isDemo = false; offlineMode = false; automaticOffline = false; library = []; resetCovers(); profile = ServerProfile()
+        api = nil; isDemo = false; offlineMode = false; automaticOffline = false; publishLibrary([]); resetCovers(); profile = ServerProfile()
         resetBookmarkSession(); readingStateWritable = false
         followingWritable = false; pushNotificationsAvailable = false; followedSeries = []
         followingError = nil; followingBusy = []; pendingPushSeriesID = nil
@@ -392,46 +453,127 @@ final class AppModel: ObservableObject {
         // Only a deliberate offline selection persists across launches.
         UserDefaults.standard.set(!automatic, forKey: "offlineReading")
         await downloads.pauseAll(preserveQueue: true)
-        api = nil; offlineMode = true; library = downloadedSeries; resetCovers()
+        api = nil; offlineMode = true; resetCovers()
         sessionID = UUID(); bookmarksLoading = false; bookmarkBusy = false
         readingStateWritable = false; connectionError = nil; showConnection = false
         await restoreCachedBookmarks()
     }
     func cover(_ id: String) async -> UIImage? {
         guard !clearingImages, !Task.isCancelled else { return nil }
-        let revision = coverRevision
-        if let date = coverDates[id], Date().timeIntervalSince(date) < 300,
-           let cached = covers.object(forKey: id as NSString) { return cached }
-        if offlineMode {
-            guard let account = downloads.account,
-                  let data = try? await downloads.store.cover(seriesID: id, account: account) else { return nil }
-            return await Self.coverThumbnail(data)
-        }
+        let session = imageSession
+        let revision = coverVersions[id]
+        let key = "\(id):\(revision ?? "")" as NSString
+        if let cached = covers.object(forKey: key) { return cached }
         if isDemo, let series = DemoCatalog.series.first(where: { $0.id == id }) {
             let image = DemoArtwork.cover(series)
-            covers.setObject(image, forKey: id as NSString, cost: 600 * 900 * 4)
-            coverDates[id] = Date()
+            covers.setObject(image, forKey: key, cost: 600 * 900 * 4)
             return image
         }
-        guard let client = api, let account = downloads.account else { return nil }
-        var data = try? await coverDisk.data(id, account: account)
+        guard let account = downloads.account else { return nil }
+        var data = await localStorage.read(.covers, id, account: account, revision: revision)
         var image: UIImage?
-        var fetched = false
         if let data { image = await Self.coverThumbnail(data) }
-        if image == nil {
-            data = try? await client.cover(id)
-            fetched = true
+        if image == nil, !offlineMode, let client = api {
+            data = try? await fetchCover(id, revision: revision, account: account, client: client, requireSave: false)
             if let data { image = await Self.coverThumbnail(data) }
         }
-        guard let image, let data, !Task.isCancelled, revision == coverRevision,
-              client === api, account == downloads.account else { return nil }
-        // Enqueue before logout can clear the account cache. Late network responses
-        // are fenced above, and the actor serializes save/remove on disk.
-        if fetched { try? await coverDisk.save(data, id: id, account: account) }
-        guard !Task.isCancelled, revision == coverRevision, client === api else { return nil }
-        covers.setObject(image, forKey: id as NSString, cost: image.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
-        coverDates[id] = Date()
+        let currentImage = image != nil
+        if image == nil {
+            // Keep the previous cover visible if the new revision is temporarily unreachable.
+            data = await localStorage.read(.covers, id, account: account)
+            if data == nil { data = try? await downloads.store.cover(seriesID: id, account: account) }
+            if let data { image = await Self.coverThumbnail(data) }
+        }
+        guard let image, let data, !Task.isCancelled, session == imageSession,
+              revision == coverVersions[id], account == downloads.account else { return nil }
+        if currentImage {
+            covers.setObject(image, forKey: key, cost: image.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
+        }
         return image
+    }
+    private func fetchCover(_ id: String, revision: String?, account: OfflineAccount,
+                            client: ReaderAPI, force: Bool = false, requireSave: Bool = true) async throws -> Data {
+        let generation = await localStorage.generation()
+        let data = try await client.cover(id, reload: force || revision != nil)
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0 else { throw ReaderError.unavailable(415) }
+        try Task.checkCancellation()
+        guard client === api, account == downloads.account, revision == coverVersions[id], !clearingImages
+        else { throw CancellationError() }
+        do {
+            try await localStorage.write(data, to: .covers, key: id, account: account,
+                                         generation: generation, revision: revision)
+        } catch OfflineError.lowSpace {
+            storageNotice = OfflineError.lowSpace.localizedDescription
+            if requireSave { throw OfflineError.lowSpace }
+        } catch { if requireSave { throw error } }
+        return data
+    }
+    private func warmCovers() {
+        guard coverWarmup == nil, !coverWarmupPaused, storageRefreshProgress == nil, !clearingImages,
+              networkAllowsPrefetch, !isDemo, !offlineMode,
+              !ProcessInfo.processInfo.isLowPowerModeEnabled,
+              let client = api, let account = downloads.account else { return }
+        let items = library
+        coverWarmup = Task { [weak self] in
+            guard let self else { return }
+            defer { if !Task.isCancelled { coverWarmup = nil } }
+            for item in items {
+                guard !Task.isCancelled, client === api, account == downloads.account else { return }
+                if await localStorage.contains(.covers, item.id, account: account, revision: item.coverRevision) { continue }
+                do {
+                    _ = try await fetchCover(item.id, revision: item.coverRevision, account: account, client: client)
+                    try await Task.sleep(for: .milliseconds(120))
+                } catch OfflineError.lowSpace { return }
+                catch { if Task.isCancelled { return } }
+            }
+        }
+    }
+    func clearSaved(_ section: ReaderStorageSection) async {
+        guard !clearingImages, !busy, storageRefreshProgress == nil, let account = downloads.account else { return }
+        clearingImages = true
+        if section == .covers { coverWarmupPaused = true }
+        resetCovers()
+        defer {
+            clearingImages = false
+            coverWarmup = nil
+            coverRevision = UUID()
+            localStorageRevision = UUID()
+        }
+        storageNotice = nil
+        do { try await localStorage.clear(section, account: account) }
+        catch { storageNotice = error.localizedDescription }
+    }
+    func refreshSaved() async {
+        guard let client = api, let account = downloads.account, !offlineMode, !isDemo,
+              !busy, !refreshing, !clearingImages, storageRefreshProgress == nil else { return }
+        coverWarmup?.cancel(); coverWarmup = nil
+        coverWarmupPaused = false
+        storageRefreshProgress = 0; storageNotice = nil
+        defer {
+            storageRefreshProgress = nil; coverRevision = UUID(); localStorageRevision = UUID()
+        }
+        do {
+            let generation = await localStorage.generation()
+            let result: LibraryResponse = try await client.get("/v1/library", reload: true)
+            guard !Task.isCancelled, client === api, account == downloads.account else { return }
+            lastLibrarySync = Date()
+            publishLibrary(result.items)
+            await remember(result.items, key: "library", account: account, generation: generation)
+            var failed = 0
+            for item in result.items {
+                guard !Task.isCancelled, client === api, account == downloads.account else { return }
+                do { _ = try await fetchCover(item.id, revision: item.coverRevision, account: account, client: client, force: true) }
+                catch ReaderError.unavailable(404) { /* No cover on the server. */ }
+                catch OfflineError.lowSpace { return }
+                catch { failed += 1 }
+                if let progress = storageRefreshProgress { storageRefreshProgress = progress + 1 }
+            }
+            covers.removeAllObjects()
+            storageNotice = failed == 0 ? L10n.text("Dati salvati aggiornati") : L10n.format("%d copertine non aggiornate", failed)
+        } catch {
+            if !Task.isCancelled { storageNotice = error.localizedDescription }
+        }
     }
     private nonisolated static func coverThumbnail(_ data: Data) async -> UIImage? {
         await Task.detached(priority: .utility) {
@@ -609,26 +751,90 @@ final class AppModel: ObservableObject {
             }
         }
     }
+    func savedBooks(for series: String) async -> [LibraryBook]? {
+        guard let account = downloads.account, !isDemo, !offlineMode || automaticOffline else { return nil }
+        return await recalled([LibraryBook].self, key: "series-\(series)", account: account)
+    }
     func books(for series: String) async throws -> [LibraryBook] {
-        if offlineMode { return OfflineLibrary.books(seriesID: series, downloads: downloads.items) }
-        if isDemo { return try DemoCatalog.books(for: series) }
-        guard let api else { throw ReaderError.unavailable(0) }
+        if isDemo && !offlineMode { return try DemoCatalog.books(for: series) }
+        guard !offlineMode, let api else {
+            return await savedBooks(for: series) ?? OfflineLibrary.books(seriesID: series, downloads: downloads.items)
+        }
+        let generation = await localStorage.generation()
         do {
             let result: BooksResponse = try await api.get("/v1/series/\(try Endpoint.identifier(series))")
+            try Task.checkCancellation()
+            guard self.api === api else { throw CancellationError() }
+            if let account = downloads.account {
+                await remember(result.books, key: "series-\(series)", account: account, generation: generation)
+            }
             return result.books
         } catch {
             await fallBackOffline(error, client: api)
+            if let saved = await savedBooks(for: series) { return saved }
             if offlineMode { return OfflineLibrary.books(seriesID: series, downloads: downloads.items) }
             throw error
         }
     }
     func book(_ id: String) async throws -> ReaderBook {
-        if let account = downloads.account, let cached = try await downloads.store.book(id, account: account) { return cached }
-        if offlineMode { throw OfflineError.notDownloaded }
-        if isDemo { return try DemoCatalog.book(id) }
-        guard let api else { throw ReaderError.unavailable(0) }
-        do { return try await api.get("/v1/books/\(try Endpoint.identifier(id))") }
-        catch { await fallBackOffline(error, client: api); throw error }
+        if let account = downloads.account, let downloaded = try await downloads.store.book(id, account: account) { return downloaded }
+        if isDemo && !offlineMode { return try DemoCatalog.book(id) }
+        if let account = downloads.account, !offlineMode || automaticOffline,
+           let book = await recalled(ReaderBook.self, key: "book-\(id)", account: account) {
+            bookVersions[id] = book.contentRevision
+            return book
+        }
+        if offlineMode || api == nil { throw OfflineError.notDownloaded }
+        return try await refreshBook(id)
+    }
+    func refreshBook(_ id: String) async throws -> ReaderBook {
+        guard let api, !offlineMode, !isDemo else { throw ReaderError.unavailable(0) }
+        let generation = await localStorage.generation()
+        do {
+            let book: ReaderBook = try await api.get("/v1/books/\(try Endpoint.identifier(id))")
+            try Task.checkCancellation()
+            guard self.api === api else { throw CancellationError() }
+            bookVersions[id] = book.contentRevision
+            if let account = downloads.account {
+                await remember(book, key: "book-\(id)", account: account, generation: generation)
+            }
+            return book
+        } catch { await fallBackOffline(error, client: api); throw error }
+    }
+    func saveOpenedVolume(_ book: ReaderBook, startingAt start: Int) async {
+        guard keepReadPages, keepOpenedVolumes, canSaveOpenedVolume, !offlineMode,
+              !ProcessInfo.processInfo.isLowPowerModeEnabled,
+              let client = api, let account = downloads.account,
+              downloads.item(book.id)?.complete != true else { return }
+        let bookID = book.id
+        let revision = book.contentRevision
+        let generation = await localStorage.generation()
+        let first = min(max(start, 0), book.pageCount)
+        do {
+            try await Task.sleep(for: .seconds(1))
+            for range in [first..<book.pageCount, 0..<first] {
+                for index in range {
+                    try Task.checkCancellation()
+                    guard keepReadPages, keepOpenedVolumes, canSaveOpenedVolume,
+                          !ProcessInfo.processInfo.isLowPowerModeEnabled,
+                          client === api, account == downloads.account, !clearingImages,
+                          bookVersions[bookID] == revision, downloads.item(bookID)?.complete != true else { return }
+                    let key = String(index)
+                    if await localStorage.contains(.pages, key, account: account, group: bookID, revision: revision) { continue }
+                    let data = try await client.downloadPage(book: bookID, index: index)
+                    try Task.checkCancellation()
+                    guard client === api, bookVersions[bookID] == revision, keepReadPages, keepOpenedVolumes,
+                          canSaveOpenedVolume, !clearingImages else { return }
+                    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                          CGImageSourceGetCount(source) > 0 else { continue }
+                    try await localStorage.write(data, to: .pages, key: key, account: account,
+                                                 generation: generation, group: bookID, revision: revision)
+                    try await Task.sleep(for: .milliseconds(180))
+                }
+            }
+        } catch OfflineError.lowSpace {
+            storageNotice = OfflineError.lowSpace.localizedDescription
+        } catch { /* Speculative work resumes the next time the book opens. */ }
     }
     func prepareNextPage(_ id: String, after index: Int, pageCount: Int) async {
         guard index >= 0, index < pageCount - 1,
@@ -645,30 +851,46 @@ final class AppModel: ObservableObject {
     func page(_ id: String, at index: Int, speculative: Bool = false) async throws -> UIImage {
         try Task.checkCancellation()
         guard !clearingImages else { throw CancellationError() }
-        let cacheKey = "\(id):\(index)" as NSString
-        if (!offlineMode || downloads.item(id)?.complete == true), let cached = pages.object(forKey: cacheKey) { return cached }
+        let revision = bookVersions[id]
+        let downloaded = downloads.item(id)?.complete == true
+        let cacheKey = "\(id):\(downloaded):\(revision ?? ""):\(index)" as NSString
+        if (!offlineMode || automaticOffline || downloaded), let cached = pages.object(forKey: cacheKey) { return cached }
         let generation = imageSession
-        if let account = downloads.account, let data = try await downloads.store.page(id, index: index, account: account) {
-            guard let image = UIImage(data: data) else { throw OfflineError.incomplete }
-            let prepared = await image.byPreparingForDisplay() ?? image
-            try Task.checkCancellation()
-            guard generation == imageSession else { throw CancellationError() }
-            pages.setObject(prepared, forKey: cacheKey, cost: prepared.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
-            return prepared
-        }
-        if offlineMode { throw OfflineError.notDownloaded }
-        if isDemo { return DemoArtwork.page(try DemoCatalog.page(id, at: index)) }
-        guard let api else { throw ReaderError.unavailable(0) }
+        let storageGeneration = await localStorage.generation()
+        let account = downloads.account
+        let localCopy: Data?
+        if let account, let data = try await downloads.store.page(id, index: index, account: account) {
+            localCopy = data
+        } else if let account, !offlineMode || automaticOffline {
+            localCopy = await localStorage.read(.pages, String(index), account: account, group: id, revision: revision)
+        } else { localCopy = nil }
+        if isDemo, localCopy == nil, !offlineMode { return DemoArtwork.page(try DemoCatalog.page(id, at: index)) }
+        let client = api
         let data: Data
-        do { data = try await api.data("/v1/books/\(try Endpoint.identifier(id))/pages/\(index)") }
-        catch {
-            if !speculative { await fallBackOffline(error, client: api) }
-            throw error
+        if let localCopy { data = localCopy }
+        else {
+            guard !offlineMode, let client else { throw OfflineError.notDownloaded }
+            do { data = try await client.downloadPage(book: id, index: index) }
+            catch {
+                if !speculative { await fallBackOffline(error, client: client) }
+                throw error
+            }
         }
         guard let image = UIImage(data: data) else { throw ReaderError.unavailable(415) }
         let prepared = await image.byPreparingForDisplay() ?? image
         try Task.checkCancellation()
-        guard generation == imageSession, api === self.api else { throw CancellationError() }
+        guard generation == imageSession, account == downloads.account, revision == bookVersions[id]
+        else { throw CancellationError() }
+        if localCopy == nil, keepReadPages, let account {
+            do {
+                try await localStorage.write(data, to: .pages, key: String(index), account: account,
+                                             generation: storageGeneration, group: id, revision: revision)
+            } catch OfflineError.lowSpace {
+                storageNotice = OfflineError.lowSpace.localizedDescription
+            } catch { /* A disk error should not interrupt reading. */ }
+        }
+        try Task.checkCancellation()
+        guard generation == imageSession, revision == bookVersions[id] else { throw CancellationError() }
         pages.setObject(prepared, forKey: cacheKey, cost: prepared.cgImage.map { $0.bytesPerRow * $0.height } ?? data.count)
         return prepared
     }

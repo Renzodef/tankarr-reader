@@ -424,7 +424,7 @@ struct SeriesView: View {
                         .accessibilityLabel(L10n.text("Download della serie")).accessibilityIdentifier("series-downloads")
                 }
             }
-            .task(id: model.offlineMode) { await load(); await model.refreshBookmarks(); await model.refreshFollows() }
+            .task(id: "\(model.offlineMode)-\(model.api != nil)") { await load(); await model.refreshBookmarks(); await model.refreshFollows() }
             .task(id: model.offlineMode) { await loadCatalogueLinks() }
             .refreshable {
                 async let catalogues: Void = loadCatalogueLinks(reload: true)
@@ -513,7 +513,14 @@ struct SeriesView: View {
     private func load() async {
         guard model.canBrowse else { return }; loading = true; error = nil
         defer { loading = false }
-        do { books = try await model.books(for: series.id) }
+        if let saved = await model.savedBooks(for: series.id), !Task.isCancelled {
+            books = saved; loading = false
+        }
+        do {
+            let fresh = try await model.books(for: series.id)
+            try Task.checkCancellation()
+            books = fresh
+        }
         catch { if !Task.isCancelled { self.error = error.localizedDescription } }
     }
 }
@@ -545,6 +552,13 @@ struct ConnectionView: View {
                 Section {
                     Button(L10n.text("Esplora la libreria dimostrativa")) { Task { await model.startDemo(); dismiss() } }.disabled(model.busy)
                 } footer: { Text(L10n.text("Tre racconti originali per provare ricerca, lettura e zoom. Funziona senza account e senza connessione.")) }
+                Section {
+                    NavigationLink {
+                        ReaderStorageView()
+                    } label: {
+                        Label(L10n.text("Spazio sul dispositivo"), systemImage: "internaldrive")
+                    }.accessibilityIdentifier("reader-device-storage")
+                }
                 Section(L10n.text("Server")) {
                     TextField(L10n.text("Indirizzo locale (opzionale)"), text: $profile.localAddress).keyboardType(.URL)
                     TextField(L10n.text("Indirizzo HTTPS"), text: $profile.remoteAddress).keyboardType(.URL)

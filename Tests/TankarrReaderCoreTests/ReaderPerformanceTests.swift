@@ -41,34 +41,47 @@ final class ReaderPerformanceTests: XCTestCase {
         await gate.release()
     }
 
-    func testCoverCachePersistsAndSeparatesAccounts() async throws {
+    func testSavedLibrarySurvivesReopenAndIsolatesAccounts() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let a = OfflineAccount(instance: "one", username: "reader")
-        let b = OfflineAccount(instance: "two", username: "reader")
-        let cache = ReaderCoverCache(root: root)
-        try await cache.save(Data("cover".utf8), id: "series", account: a)
-        let reopened = ReaderCoverCache(root: root)
-        let hit = try await reopened.data("series", account: a)
-        let miss = try await reopened.data("series", account: b)
-        XCTAssertEqual(hit, Data("cover".utf8)); XCTAssertNil(miss)
-        try await reopened.remove(account: a)
-        let removed = try await reopened.data("series", account: a)
-        XCTAssertNil(removed)
+        let account = OfflineAccount(instance: "one", username: "reader")
+        let other = OfflineAccount(instance: "two", username: "reader")
+        let storage = ReaderLocalStorage(root: root)
+        let generation = await storage.generation()
+        let cover = Data("cover".utf8)
+        try await storage.write(cover, to: .covers, key: "series", account: account,
+                                generation: generation, revision: "original")
+        let reopened = ReaderLocalStorage(root: root)
+        let hit = await reopened.read(.covers, "series", account: account, revision: "original")
+        let stale = await reopened.read(.covers, "series", account: account, revision: "updated")
+        let otherAccount = await reopened.read(.covers, "series", account: other)
+        XCTAssertEqual(hit, cover)
+        XCTAssertNil(stale)
+        XCTAssertNil(otherAccount)
     }
 
-    func testCoverCacheBoundsSizeAndExpires() async throws {
+    func testUpdatedBookReplacesSavedPagesAndDeletionRejectsLateWrites() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
-        let a = OfflineAccount(instance: "one", username: "reader")
-        let cache = ReaderCoverCache(root: root, limit: 8)
-        try await cache.save(Data(repeating: 1, count: 8), id: "first", account: a)
-        try await cache.save(Data(repeating: 2, count: 8), id: "second", account: a)
-        let first = try await cache.data("first", account: a)
-        let second = try await cache.data("second", account: a)
-        XCTAssertNil(first); XCTAssertEqual(second?.count, 8)
-        let expired = ReaderCoverCache(root: root, lifetime: 0)
-        let stale = try await expired.data("second", account: a)
-        XCTAssertNil(stale)
+        let account = OfflineAccount(instance: "one", username: "reader")
+        let storage = ReaderLocalStorage(root: root)
+        let generation = await storage.generation()
+        let page = Data("page".utf8)
+        try await storage.write(page, to: .pages, key: "1", account: account,
+                                generation: generation, group: "book", revision: "original")
+        try await storage.write(page, to: .pages, key: "2", account: account,
+                                generation: generation, group: "book", revision: "updated")
+        let removed = await storage.read(.pages, "1", account: account, group: "book")
+        XCTAssertNil(removed)
+        let sizes = await storage.sizes(account: account)
+        XCTAssertGreaterThan(sizes[.pages, default: 0], 0)
+        try await storage.clear(.pages, account: account)
+        do {
+            try await storage.write(page, to: .pages, key: "2", account: account,
+                                    generation: generation, group: "book", revision: "updated")
+            XCTFail("A late result recreated deleted pages")
+        } catch is CancellationError {}
+        let afterClear = await storage.sizes(account: account)
+        XCTAssertEqual(afterClear[.pages], 0)
     }
 }
