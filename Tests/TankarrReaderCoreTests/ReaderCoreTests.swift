@@ -115,6 +115,21 @@ final class ReaderCoreTests: XCTestCase {
         let book = #"{"id":"b","series_title":"S","title":"T","page_count":4,"direction":"rtl","mode":"manga","previous_id":null,"next_id":"c"}"#
         XCTAssertEqual(try decoder.decode(ReaderBook.self, from: Data(book.utf8)).nextId, "c")
     }
+    func testLibraryBookDecodesNullChapterForVolumeReleases() throws {
+        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let raw = #"{"books":[{"id":"vol-1","label":"Volume 1","title":"Start","volume":"1","chapter":null,"unit":"volume","language":"it"},{"id":"ch-2","label":"Chapter 2","title":"Next","volume":"1","chapter":"2","unit":"chapter","language":"it"}]}"#
+        let result = try decoder.decode(BooksResponse.self, from: Data(raw.utf8))
+        XCTAssertEqual(result.books[0].chapter, "")
+        XCTAssertEqual(result.books[0].volume, "1")
+        XCTAssertEqual(result.books[0].unit, "volume")
+        XCTAssertEqual(result.books[1].chapter, "2")
+        let missing = #"{"id":"vol-2","label":"Volume 2","title":"","volume":"2","unit":"volume","language":"en"}"#
+        XCTAssertEqual(try decoder.decode(LibraryBook.self, from: Data(missing.utf8)).chapter, "")
+        let encoded = try JSONEncoder().encode(result.books[0])
+        XCTAssertEqual(try JSONDecoder().decode(LibraryBook.self, from: encoded), result.books[0])
+        let chapter = LibraryBook(id: "ch-2", label: "Chapter 2", title: "Next", volume: "1", chapter: "2", unit: "chapter", language: "it")
+        XCTAssertEqual(try JSONDecoder().decode(LibraryBook.self, from: JSONEncoder().encode(chapter)), chapter)
+    }
     func testCatalogueShortcutsUsePublicHTTPSAndReadOnlyReaderRoute() throws {
         let base = try Endpoint.validate("https://reader.example.org")
         let path = "/v1/series/series-1/catalogues"

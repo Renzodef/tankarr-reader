@@ -48,7 +48,11 @@ struct ReaderStorageView: View {
             }
         }
         .navigationTitle(L10n.text("Spazio sul dispositivo"))
-        .sheet(isPresented: $showDownloads) { DownloadsView(onShowSeries: { _ in }) }
+        .sheet(isPresented: $showDownloads) {
+            DownloadsView(onShowSeries: { _ in })
+                .environmentObject(model)
+                .environmentObject(downloads)
+        }
         .task(id: model.localStorageRevision) {
             if let account = downloads.account { sizes = await model.localStorage.sizes(account: account) }
             else { sizes = [:] }

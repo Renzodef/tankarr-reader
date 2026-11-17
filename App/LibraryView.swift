@@ -110,16 +110,25 @@ struct LibraryView: View {
                     Text(model.endpointLabel).font(.caption2).lineLimit(1)
                 }.foregroundStyle(.secondary).padding(.horizontal).padding(.vertical, 8).background(.bar)
             }
-        }.sheet(isPresented: $model.showConnection) { ConnectionView() }
-            .onChange(of: model.pendingPushSeriesID) { _, _ in openPushSeries() }
-            .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries() }
-            .onChange(of: model.busy) { _, busy in if !busy { openPushSeries() } }
-            .sheet(isPresented: $showBookmarks, onDismiss: openPendingSeries) {
-                BookmarksView { pendingSeries = $0; showBookmarks = false }
-            }
-            .sheet(isPresented: $showDownloads, onDismiss: openPendingSeries) {
-                DownloadsView { pendingSeries = $0; showDownloads = false }
-            }
+        }
+        .sheet(isPresented: $model.showConnection) {
+            ConnectionView()
+                .environmentObject(model)
+                .environmentObject(model.downloads)
+        }
+        .onChange(of: model.pendingPushSeriesID) { _, _ in openPushSeries() }
+        .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries() }
+        .onChange(of: model.busy) { _, busy in if !busy { openPushSeries() } }
+        .sheet(isPresented: $showBookmarks, onDismiss: openPendingSeries) {
+            BookmarksView { pendingSeries = $0; showBookmarks = false }
+                .environmentObject(model)
+                .environmentObject(model.downloads)
+        }
+        .sheet(isPresented: $showDownloads, onDismiss: openPendingSeries) {
+            DownloadsView { pendingSeries = $0; showDownloads = false }
+                .environmentObject(model)
+                .environmentObject(model.downloads)
+        }
     }
     private func openPendingSeries() {
         guard let id = pendingSeries else { return }; pendingSeries = nil
@@ -277,6 +286,7 @@ struct BookmarksView: View {
                 }) { bookmark in
                     ReaderView(bookID: bookmark.bookId, openingPage: bookmark.pageIndex,
                         onShowSeries: { pendingSeries = $0; selected = nil })
+                        .environmentObject(model)
                 }
         }
     }
@@ -467,11 +477,18 @@ struct SeriesView: View {
             .onChange(of: downloads.items.filter { $0.complete && $0.series.id == series.id }.map(\.id)) { _, _ in
                 if model.offlineMode { books = OfflineLibrary.books(seriesID: series.id, downloads: downloads.items) }
             }
-            .fullScreenCover(item: $selected) { ReaderView(bookID: $0.id, openingPage: $0.page) }
+            .fullScreenCover(item: $selected) {
+                ReaderView(bookID: $0.id, openingPage: $0.page)
+                    .environmentObject(model)
+            }
             .alert(L10n.text("Segnalibro non disponibile offline"), isPresented: $bookmarkUnavailable) {
                 Button(L10n.text("OK"), role: .cancel) {}
             } message: { Text(L10n.text("Il capitolo del segnalibro non è scaricato. Torna online per leggerlo.")) }
-            .sheet(isPresented: $showDownloadRange) { SeriesDownloadRangeView(series: series, books: books) }
+            .sheet(isPresented: $showDownloadRange) {
+                SeriesDownloadRangeView(series: series, books: books)
+                    .environmentObject(model)
+                    .environmentObject(downloads)
+            }
             .confirmationDialog(L10n.text("Rimuovere tutti i download di questa serie?"), isPresented: $confirmRemoveSeries, titleVisibility: .visible) {
                 Button(L10n.text("Rimuovi download della serie"), role: .destructive) {
                     Task {
