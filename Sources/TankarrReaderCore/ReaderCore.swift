@@ -224,6 +224,39 @@ public struct LibraryBook: Codable, Identifiable, Hashable, Sendable {
     public let chapter: String
     public let unit: String
     public let language: String
+
+    public init(id: String, label: String, title: String, volume: String, chapter: String, unit: String, language: String) {
+        self.id = id; self.label = label; self.title = title; self.volume = volume
+        self.chapter = chapter; self.unit = unit; self.language = language
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, label, title, volume, chapter, unit, language
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        label = try values.decode(String.self, forKey: .label)
+        title = try values.decode(String.self, forKey: .title)
+        volume = try values.decode(String.self, forKey: .volume)
+        // Volume releases may send chapter as null. Keep the stored value a
+        // string so list order and navigation stay the same as an empty chapter.
+        chapter = try values.decodeIfPresent(String.self, forKey: .chapter) ?? ""
+        unit = try values.decode(String.self, forKey: .unit)
+        language = try values.decode(String.self, forKey: .language)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(label, forKey: .label)
+        try container.encode(title, forKey: .title)
+        try container.encode(volume, forKey: .volume)
+        try container.encode(chapter, forKey: .chapter)
+        try container.encode(unit, forKey: .unit)
+        try container.encode(language, forKey: .language)
+    }
 }
 public struct ReaderBook: Codable, Sendable {
     public let id: String
