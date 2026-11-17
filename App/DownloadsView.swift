@@ -182,6 +182,7 @@ struct DownloadsView: View {
                     if let id = pendingSeries { pendingSeries = nil; onShowSeries(id) }
                 }) { book in
                     ReaderView(bookID: book.id, onShowSeries: { pendingSeries = $0; selected = nil })
+                        .environmentObject(model)
                 }
                 .confirmationDialog(L10n.text("Rimuovere tutti i download di questo account?"), isPresented: $confirmRemoveAll, titleVisibility: .visible) {
                     Button(L10n.text("Rimuovi tutti i download"), role: .destructive) {
