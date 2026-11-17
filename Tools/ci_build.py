@@ -324,7 +324,13 @@ def upload(ipa, version, build):
     if "--api-key" in help_text and "--p8-file-path" in help_text:
         run("xcrun", "altool", "--upload-package", ipa,
             "--api-key", os.environ["ASC_KEY_ID"], "--api-issuer", os.environ["ASC_ISSUER_ID"],
-            "--p8-file-path", os.environ["ASC_PRIVATE_KEY_PATH"], "--wait")
+            "--p8-file-path", os.environ["ASC_PRIVATE_KEY_PATH"],
+            # Passing the App Store Connect app id skips the list-apps lookup,
+            # which can fail with HTTP 500 while uploads still work.
+            *(["--apple-id", os.environ["ASC_APP_ID"], "--bundle-id", "app.tankarr.reader",
+               "--bundle-version", str(build), "--bundle-short-version-string", str(version)]
+              if os.environ.get("ASC_APP_ID") else []),
+            "--wait")
     else:
         # Xcode's older uploader discovers AuthKey_<ID>.p8 in this private directory.
         run("xcrun", "altool", "--upload-app", "-f", ipa, "-t", "ios",
