@@ -111,4 +111,15 @@ final class DemoAndProgressTests: XCTestCase {
         XCTAssertTrue(store.all().isEmpty)
         XCTAssertEqual(progress.position(book: "book", instance: DemoCatalog.instanceID), 6)
     }
+
+    func testStatusFilterMatchesGatewayStatusesAndTreatsMissingAsUnknown() throws {
+        let json = Data(#"[{"id":"a","title":"A","description":"","authors":[],"language":"en","books_count":1,"cover_path":"","status":"completed"},{"id":"b","title":"B","description":"","authors":[],"language":"en","books_count":1,"cover_path":"","status":"hiatus"},{"id":"c","title":"C","description":"","authors":[],"language":"en","books_count":1,"cover_path":""},{"id":"d","title":"D","description":"","authors":[],"language":"en","books_count":1,"cover_path":"","status":"weird"}]"#.utf8)
+        let decoder = JSONDecoder(); decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let rows = try decoder.decode([LibrarySeries].self, from: json)
+        XCTAssertEqual(rows.map(\.publicationStatus), [.completed, .hiatus, .unknown, .unknown])
+        XCTAssertEqual(rows.filter { SeriesStatusFilter.completed.matches($0) }.map(\.id), ["a"])
+        XCTAssertEqual(rows.filter { SeriesStatusFilter.unknown.matches($0) }.map(\.id), ["c", "d"])
+        XCTAssertEqual(rows.filter { SeriesStatusFilter.all.matches($0) }.count, 4)
+        XCTAssertEqual(Set(DemoCatalog.series.map(\.publicationStatus)), [.completed, .ongoing, .hiatus])
+    }
 }

@@ -151,6 +151,13 @@ public struct LibrarySeries: Codable, Identifiable, Hashable, Sendable {
     public let coverPath: String
     public var coverRevision: String? = nil
     public let catalogueLinks: [CatalogueLink]?
+    /// Publication state sent by the gateway: ongoing, completed, hiatus, cancelled or unknown.
+    /// Older servers omit it; the series then counts as unknown.
+    public var status: String? = nil
+
+    public var publicationStatus: SeriesStatusFilter {
+        SeriesStatusFilter(rawValue: (status ?? "").lowercased()).flatMap { $0 == .all ? nil : $0 } ?? .unknown
+    }
 
     public var authorNames: [String] {
         var seen = Set<String>()
@@ -172,7 +179,7 @@ public struct LibrarySeries: Codable, Identifiable, Hashable, Sendable {
     }
 
     public init(id: String, title: String, description: String, authors: [String], language: String,
-                booksCount: Int, coverPath: String, catalogueLinks: [CatalogueLink]? = nil) {
+                booksCount: Int, coverPath: String, catalogueLinks: [CatalogueLink]? = nil, status: String? = nil) {
         self.id = id
         self.title = title
         self.description = description
@@ -181,6 +188,29 @@ public struct LibrarySeries: Codable, Identifiable, Hashable, Sendable {
         self.booksCount = booksCount
         self.coverPath = coverPath
         self.catalogueLinks = catalogueLinks
+        self.status = status
+    }
+}
+
+/// Library filter by publication state. `all` shows every series.
+public enum SeriesStatusFilter: String, CaseIterable, Identifiable, Sendable {
+    case all, ongoing, completed, hiatus, cancelled, unknown
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .all: return L10n.text("Tutti gli stati")
+        case .ongoing: return L10n.text("In corso")
+        case .completed: return L10n.text("Concluse")
+        case .hiatus: return L10n.text("In pausa")
+        case .cancelled: return L10n.text("Interrotte")
+        case .unknown: return L10n.text("Stato sconosciuto")
+        }
+    }
+
+    public func matches(_ series: LibrarySeries) -> Bool {
+        self == .all || series.publicationStatus == self
     }
 }
 

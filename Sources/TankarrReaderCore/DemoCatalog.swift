@@ -6,13 +6,13 @@ public enum DemoCatalog {
     public static let series: [LibrarySeries] = [
         LibrarySeries(id: "demo-lighthouse", title: "Segnali dal faro",
             description: "Una luce nella nebbia, un messaggio da decifrare. Racconto originale della libreria dimostrativa.",
-            authors: ["Tankarr Reader · Demo"], language: "it", booksCount: 1, coverPath: ""),
+            authors: ["Tankarr Reader · Demo"], language: "it", booksCount: 1, coverPath: "", status: "completed"),
         LibrarySeries(id: "demo-garden", title: "Il giardino sospeso",
             description: "Tre piccoli passi per far tornare verde una città. Racconto originale, da sfogliare da destra a sinistra.",
-            authors: ["Tankarr Reader · Demo"], language: "it", booksCount: 1, coverPath: ""),
+            authors: ["Tankarr Reader · Demo"], language: "it", booksCount: 1, coverPath: "", status: "ongoing"),
         LibrarySeries(id: "demo-clouds", title: "Atlante delle nuvole",
             description: "Un viaggio verticale tra vento, colori e nuove prospettive. Esempio originale in formato webtoon.",
-            authors: ["Tankarr Reader · Demo"], language: "it", booksCount: 1, coverPath: "")
+            authors: ["Tankarr Reader · Demo"], language: "it", booksCount: 1, coverPath: "", status: "hiatus")
     ]
 
     private static let narratives: [[String]] = [

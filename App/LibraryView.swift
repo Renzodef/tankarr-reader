@@ -14,10 +14,13 @@ struct LibraryView: View {
     @State private var path: [LibraryDestination] = []
     @State private var pendingSeries: String?
     @State private var showFollowed = false
+    @AppStorage("libraryStatusFilter") private var statusFilterValue = SeriesStatusFilter.all.rawValue
+    private var statusFilter: SeriesStatusFilter { SeriesStatusFilter(rawValue: statusFilterValue) ?? .all }
+    private var showsStatusFilter: Bool { statusFilter != .all || model.visibleLibrary.contains { $0.status != nil } }
     private var filtered: [LibrarySeries] {
         if showFollowed && model.offlineMode { return [] }
         let rows = showFollowed ? model.visibleLibrary.filter { model.followedSeries.contains($0.id) } : model.visibleLibrary
-        return rows.filter { $0.matchesLibrarySearch(search) }
+        return rows.filter { $0.matchesLibrarySearch(search) && statusFilter.matches($0) }
     }
     var body: some View {
         let filtered = self.filtered
@@ -38,6 +41,11 @@ struct LibraryView: View {
                         if showFollowed && model.offlineMode {
                             ContentUnavailableView(L10n.text("Serie seguite non disponibili offline"), systemImage: "bell.slash",
                                 description: Text(L10n.text("Torna online per vedere le serie seguite e gestire le notifiche.")))
+                        } else if statusFilter != .all && search.isEmpty {
+                            ContentUnavailableView(L10n.text("Nessuna serie con questo stato"), systemImage: "line.3.horizontal.decrease.circle",
+                                description: Text(L10n.text("Scegli un altro stato o mostra tutte le serie.")))
+                            Button(L10n.text("Mostra tutte")) { statusFilterValue = SeriesStatusFilter.all.rawValue }
+                                .buttonStyle(.bordered).accessibilityIdentifier("status-filter-reset")
                         } else if showFollowed && search.isEmpty {
                             ContentUnavailableView(L10n.text("Nessuna serie seguita"), systemImage: "bell",
                                 description: Text(L10n.text("Apri una serie e tocca Segui per ricevere gli avvisi dei nuovi capitoli.")))
@@ -59,6 +67,20 @@ struct LibraryView: View {
                 }
             }
             .toolbar {
+                if model.canBrowse && showsStatusFilter {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Picker(L10n.text("Stato della serie"), selection: $statusFilterValue) {
+                                ForEach(SeriesStatusFilter.allCases) { option in Text(option.title).tag(option.rawValue) }
+                            }
+                        } label: {
+                            Image(systemName: statusFilter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                                .padding(5).background(statusFilter == .all ? .clear : Color.orange.opacity(0.2), in: Circle())
+                        }.accessibilityLabel(L10n.text("Stato della serie"))
+                            .accessibilityValue(statusFilter.title)
+                            .accessibilityIdentifier("status-filter")
+                    }
+                }
                 if model.followingWritable || model.isDemo || !model.followedSeries.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showFollowed.toggle() } label: {
