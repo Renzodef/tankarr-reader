@@ -20,7 +20,25 @@ public enum ReaderBoundary: Equatable {
     }
 }
 
+public enum ReaderArrowKey: Equatable {
+    case left, right, up, down
+}
+
 public enum ReaderNavigation {
+    /// Page step for an arrow key, or nil when the key does nothing here.
+    /// Horizontal reading maps left/right (reversed for right-to-left books);
+    /// vertical reading maps up/down. The other pair is ignored so a key
+    /// never turns the page against the reading direction.
+    public static func keyStep(_ key: ReaderArrowKey, vertical: Bool, rightToLeft: Bool) -> Int? {
+        switch (key, vertical) {
+        case (.left, false): return rightToLeft ? 1 : -1
+        case (.right, false): return rightToLeft ? -1 : 1
+        case (.up, true): return -1
+        case (.down, true): return 1
+        default: return nil
+        }
+    }
+
     /// Reject a provable wrap in old downloaded metadata too. Never infer a
     /// neighbour from the filtered offline list: missing chapters still stop.
     public static func allowsTransition(from: ReaderBook, to: ReaderBook, forward: Bool,

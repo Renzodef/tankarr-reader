@@ -68,6 +68,22 @@ private struct ReaderChapterView: View {
                 continuousRequestPage = page; continuousRequestID += 1
             }
             .sheet(isPresented: $showOptions) { readingOptionsSheet }
+            // Mac and iPad with a keyboard: arrows turn the page. Continuous
+            // scrolling keeps the native arrow-key scrolling.
+            .focusable()
+            .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
+                guard !continuous, !showOptions else { return .ignored }
+                let key: ReaderArrowKey
+                switch press.key {
+                case .leftArrow: key = .left
+                case .rightArrow: key = .right
+                case .upArrow: key = .up
+                default: key = .down
+                }
+                guard let delta = ReaderNavigation.keyStep(key, vertical: axis == .vertical, rightToLeft: rtl) else { return .ignored }
+                step(delta)
+                return .handled
+            }
             .onDisappear { chapterTask?.cancel() }
             .alert(L10n.text("Navigazione capitoli"), isPresented: Binding(
                 get: { boundaryMessage != nil }, set: { if !$0 { boundaryMessage = nil } })) {
