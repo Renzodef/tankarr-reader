@@ -68,22 +68,6 @@ private struct ReaderChapterView: View {
                 continuousRequestPage = page; continuousRequestID += 1
             }
             .sheet(isPresented: $showOptions) { readingOptionsSheet }
-            // Mac and iPad with a keyboard: arrows turn the page. Continuous
-            // scrolling keeps the native arrow-key scrolling.
-            .focusable()
-            .onKeyPress(keys: [.leftArrow, .rightArrow, .upArrow, .downArrow]) { press in
-                guard !continuous, !showOptions else { return .ignored }
-                let key: ReaderArrowKey
-                switch press.key {
-                case .leftArrow: key = .left
-                case .rightArrow: key = .right
-                case .upArrow: key = .up
-                default: key = .down
-                }
-                guard let delta = ReaderNavigation.keyStep(key, vertical: axis == .vertical, rightToLeft: rtl) else { return .ignored }
-                step(delta)
-                return .handled
-            }
             .onDisappear { chapterTask?.cancel() }
             .alert(L10n.text("Navigazione capitoli"), isPresented: Binding(
                 get: { boundaryMessage != nil }, set: { if !$0 { boundaryMessage = nil } })) {
@@ -148,9 +132,24 @@ private struct ReaderChapterView: View {
                             .disabled(chapterLoading)
                             .accessibilityIdentifier("reader-page-slider")
                             .accessibilityLabel(L10n.text("Pagina")).accessibilityValue(L10n.format("%d di %d", page + 1, book.pageCount))
+                            // The system slider only moves when its thumb is dragged;
+                            // with a mouse a click on the track must jump there.
+                            .overlay(GeometryReader { proxy in
+                                Color.clear.contentShape(Rectangle())
+                                    .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+                                        guard !chapterLoading else { return }
+                                        let inset: CGFloat = 14
+                                        let width = max(proxy.size.width - 2 * inset, 1)
+                                        var fraction = min(max((value.location.x - inset) / width, 0), 1)
+                                        if rtl { fraction = 1 - fraction }
+                                        let target = Int((fraction * Double(book.pageCount - 1)).rounded())
+                                        if target != page { navigate(to: target) }
+                                    })
+                            }.accessibilityHidden(true))
                     }
                     HStack {
                         Button { step(rtl ? 1 : -1) } label: { Image(systemName: axis == .vertical ? "chevron.up" : "chevron.left").frame(width: 44, height: 44) }
+                            .keyboardShortcut(continuous ? nil : KeyboardShortcut(axis == .vertical ? .upArrow : .leftArrow, modifiers: []))
                             .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina successiva" : "Pagina precedente"))
                         Spacer()
                         Image(systemName: axis == .vertical ? "arrow.down" : (rtl ? "arrow.left" : "arrow.right")).font(.caption)
@@ -159,6 +158,7 @@ private struct ReaderChapterView: View {
                             .accessibilityIdentifier("reader-page-counter")
                         Spacer()
                         Button { step(rtl ? -1 : 1) } label: { Image(systemName: axis == .vertical ? "chevron.down" : "chevron.right").frame(width: 44, height: 44) }
+                            .keyboardShortcut(continuous ? nil : KeyboardShortcut(axis == .vertical ? .downArrow : .rightArrow, modifiers: []))
                             .disabled(chapterLoading || loading).accessibilityLabel(L10n.text(rtl ? "Pagina precedente" : "Pagina successiva"))
                     }
                 }.padding(.horizontal, 24).padding(.vertical, 8).background(.ultraThinMaterial)

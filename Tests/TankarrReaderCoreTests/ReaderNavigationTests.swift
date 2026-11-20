@@ -55,21 +55,4 @@ final class ReaderNavigationTests: XCTestCase {
         XCTAssertTrue(ReaderNavigation.allowsTransition(from: last, to: metadata("two", "Chapter 2"), forward: false))
         XCTAssertTrue(ReaderNavigation.allowsTransition(from: metadata("prologue", "Prologue 1"), to: metadata("first", "Chapter 1"), forward: true))
     }
-
-    func testArrowKeysFollowTheReadingDirection() {
-        XCTAssertEqual(ReaderNavigation.keyStep(.right, vertical: false, rightToLeft: false), 1)
-        XCTAssertEqual(ReaderNavigation.keyStep(.left, vertical: false, rightToLeft: false), -1)
-        // Manga: the next page is to the left.
-        XCTAssertEqual(ReaderNavigation.keyStep(.left, vertical: false, rightToLeft: true), 1)
-        XCTAssertEqual(ReaderNavigation.keyStep(.right, vertical: false, rightToLeft: true), -1)
-        XCTAssertEqual(ReaderNavigation.keyStep(.down, vertical: true, rightToLeft: false), 1)
-        XCTAssertEqual(ReaderNavigation.keyStep(.up, vertical: true, rightToLeft: false), -1)
-    }
-
-    func testArrowKeysAcrossTheReadingAxisDoNothing() {
-        XCTAssertNil(ReaderNavigation.keyStep(.up, vertical: false, rightToLeft: false))
-        XCTAssertNil(ReaderNavigation.keyStep(.down, vertical: false, rightToLeft: true))
-        XCTAssertNil(ReaderNavigation.keyStep(.left, vertical: true, rightToLeft: false))
-        XCTAssertNil(ReaderNavigation.keyStep(.right, vertical: true, rightToLeft: true))
-    }
 }
