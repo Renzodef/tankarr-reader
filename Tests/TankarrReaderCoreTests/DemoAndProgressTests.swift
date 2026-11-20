@@ -122,4 +122,22 @@ final class DemoAndProgressTests: XCTestCase {
         XCTAssertEqual(rows.filter { SeriesStatusFilter.all.matches($0) }.count, 4)
         XCTAssertEqual(Set(DemoCatalog.series.map(\.publicationStatus)), [.completed, .ongoing, .hiatus])
     }
+
+    func testStatusMenuListsOnlyStatesThatHaveSeries() {
+        func row(_ id: String, _ status: String?) -> LibrarySeries {
+            LibrarySeries(id: id, title: id, description: "", authors: [], language: "en", booksCount: 1, coverPath: "", status: status)
+        }
+        let mixed = [row("a", "completed"), row("b", "completed"), row("c", "ongoing")]
+        XCTAssertEqual(SeriesStatusFilter.available(in: mixed), [.all, .ongoing, .completed])
+        XCTAssertFalse(SeriesStatusFilter.available(in: mixed).contains(.unknown), "No series without status: no Unknown entry")
+        XCTAssertTrue(SeriesStatusFilter.isUseful(for: mixed))
+        let withUnknown = mixed + [row("d", nil)]
+        XCTAssertEqual(SeriesStatusFilter.available(in: withUnknown), [.all, .ongoing, .completed, .unknown])
+        let single = [row("a", "completed"), row("b", "completed")]
+        XCTAssertEqual(SeriesStatusFilter.available(in: single), [.all, .completed])
+        XCTAssertFalse(SeriesStatusFilter.isUseful(for: single), "One state only: hide the filter")
+        XCTAssertTrue(SeriesStatusFilter.isUseful(for: single, selected: .hiatus), "A saved choice must stay reachable")
+        XCTAssertEqual(SeriesStatusFilter.available(in: single, selected: .hiatus), [.all, .completed, .hiatus])
+        XCTAssertFalse(SeriesStatusFilter.isUseful(for: []))
+    }
 }

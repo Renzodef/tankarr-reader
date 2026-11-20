@@ -212,6 +212,18 @@ public enum SeriesStatusFilter: String, CaseIterable, Identifiable, Sendable {
     public func matches(_ series: LibrarySeries) -> Bool {
         self == .all || series.publicationStatus == self
     }
+
+    /// Options worth offering for these series: `all` first, then only the states that have at
+    /// least one series. The current choice stays listed so the picker never points at nothing.
+    public static func available(in series: [LibrarySeries], selected: SeriesStatusFilter = .all) -> [SeriesStatusFilter] {
+        let present = Set(series.map(\.publicationStatus))
+        return allCases.filter { $0 == .all || present.contains($0) || $0 == selected }
+    }
+
+    /// The filter is useless until the library holds at least two different states.
+    public static func isUseful(for series: [LibrarySeries], selected: SeriesStatusFilter = .all) -> Bool {
+        selected != .all || Set(series.map(\.publicationStatus)).count > 1
+    }
 }
 
 public struct CatalogueLinksResponse: Decodable {

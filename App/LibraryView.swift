@@ -16,7 +16,8 @@ struct LibraryView: View {
     @State private var showFollowed = false
     @AppStorage("libraryStatusFilter") private var statusFilterValue = SeriesStatusFilter.all.rawValue
     private var statusFilter: SeriesStatusFilter { SeriesStatusFilter(rawValue: statusFilterValue) ?? .all }
-    private var showsStatusFilter: Bool { statusFilter != .all || model.visibleLibrary.contains { $0.status != nil } }
+    private var statusOptions: [SeriesStatusFilter] { SeriesStatusFilter.available(in: model.visibleLibrary, selected: statusFilter) }
+    private var showsStatusFilter: Bool { SeriesStatusFilter.isUseful(for: model.visibleLibrary, selected: statusFilter) }
     private var filtered: [LibrarySeries] {
         if showFollowed && model.offlineMode { return [] }
         let rows = showFollowed ? model.visibleLibrary.filter { model.followedSeries.contains($0.id) } : model.visibleLibrary
@@ -71,7 +72,7 @@ struct LibraryView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Picker(L10n.text("Stato della serie"), selection: $statusFilterValue) {
-                                ForEach(SeriesStatusFilter.allCases) { option in Text(option.title).tag(option.rawValue) }
+                                ForEach(statusOptions) { option in Text(option.title).tag(option.rawValue) }
                             }
                         } label: {
                             Image(systemName: statusFilter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
