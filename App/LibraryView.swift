@@ -14,6 +14,11 @@ struct LibraryView: View {
     @State private var path: [LibraryDestination] = []
     @State private var pendingSeries: String?
     @State private var showFollowed = false
+    @State private var linkedBook: LinkedBook?
+    private struct LinkedBook: Identifiable {
+        let id: String
+        let page: Int?
+    }
     @AppStorage("libraryStatusFilter") private var statusFilterValue = SeriesStatusFilter.all.rawValue
     private var statusFilter: SeriesStatusFilter { SeriesStatusFilter(rawValue: statusFilterValue) ?? .all }
     private var statusOptions: [SeriesStatusFilter] { SeriesStatusFilter.available(in: model.visibleLibrary, selected: statusFilter) }
@@ -140,8 +145,14 @@ struct LibraryView: View {
                 .environmentObject(model.downloads)
         }
         .onChange(of: model.pendingPushSeriesID) { _, _ in openPushSeries() }
-        .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries() }
-        .onChange(of: model.busy) { _, busy in if !busy { openPushSeries() } }
+        .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries(); openLinkedBook() }
+        .onChange(of: model.busy) { _, busy in if !busy { openPushSeries(); openLinkedBook() } }
+        .onChange(of: model.pendingLink) { _, _ in openLinkedBook() }
+        .onAppear { openLinkedBook() }
+        .fullScreenCover(item: $linkedBook) { book in
+            ReaderView(bookID: book.id, openingPage: book.page)
+                .environmentObject(model)
+        }
         .sheet(isPresented: $showBookmarks, onDismiss: openPendingSeries) {
             BookmarksView { pendingSeries = $0; showBookmarks = false }
                 .environmentObject(model)
@@ -156,6 +167,20 @@ struct LibraryView: View {
     private func openPendingSeries() {
         guard let id = pendingSeries else { return }; pendingSeries = nil
         if let series = model.series(id) { path = [.series(series)] }
+    }
+    private func openLinkedBook() {
+        guard !model.busy, model.canBrowse, let link = model.pendingLink else { return }
+        model.pendingLink = nil
+        let book = LinkedBook(id: link.bookID, page: link.pageIndex)
+        let sheetOpen = showBookmarks || showDownloads || model.showConnection
+        showBookmarks = false; showDownloads = false; model.showConnection = false
+        linkedBook = nil
+        // A full-screen cover cannot appear while a sheet is still closing.
+        if sheetOpen {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { linkedBook = book }
+        } else {
+            linkedBook = book
+        }
     }
     private func openPushSeries() {
         guard !model.busy, model.canBrowse, let id = model.pendingPushSeriesID, let series = model.series(id) else { return }
