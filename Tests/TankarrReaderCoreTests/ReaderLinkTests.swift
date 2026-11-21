@@ -28,6 +28,22 @@ final class ReaderLinkTests: XCTestCase {
         XCTAssertNil(ReaderLink(url: URL(string: "https://tankarr.example.com/#page=2")!))
     }
 
+    func testAppSchemeLinkOpensBookAtOneBasedPage() {
+        XCTAssertEqual(ReaderLink(url: URL(string: "tankarr-reader://book/manual-abc123?page=3")!),
+                       ReaderLink(bookID: "manual-abc123", pageIndex: 2))
+        XCTAssertEqual(ReaderLink(url: URL(string: "TANKARR-READER://book/b1")!),
+                       ReaderLink(bookID: "b1", pageIndex: nil))
+        XCTAssertEqual(ReaderLink(url: URL(string: "tankarr-reader://book/a%20b?page=0")!),
+                       ReaderLink(bookID: "a b", pageIndex: nil))
+    }
+
+    func testAppSchemeLinksWithoutBookAreIgnored() {
+        XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://book/")!))
+        XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://series/s1")!))
+        XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://book/a/b")!))
+        XCTAssertNil(ReaderLink(url: URL(string: "other-app://book/b1")!))
+    }
+
     func testOnlyWebLinksAreAccepted() {
         XCTAssertNil(ReaderLink(url: URL(string: "file:///tmp/#book=b1")!))
         XCTAssertNil(ReaderLink(url: URL(string: "javascript:alert(1)#book=b1")!))
