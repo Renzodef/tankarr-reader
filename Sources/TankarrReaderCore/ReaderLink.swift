@@ -15,6 +15,10 @@ public struct ReaderLink: Equatable, Sendable {
     }
 
     public init?(url: URL) {
+        if url.scheme?.lowercased() == ReaderLink.appScheme {
+            self.init(appURL: url)
+            return
+        }
         guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
               let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedFragment,
               !fragment.isEmpty else { return nil }
@@ -28,6 +32,19 @@ public struct ReaderLink: Equatable, Sendable {
         }
         guard let book = values["book"], !book.isEmpty else { return nil }
         let page = values["page"].flatMap { Int($0) }
+        self.init(bookID: book, pageIndex: page.flatMap { $0 >= 1 ? $0 - 1 : nil })
+    }
+
+    /// The app's own scheme, registered in Info.plist: `tankarr-reader://book/<id>?page=3`.
+    /// iOS and macOS ask before opening it, so it works without Associated Domains.
+    public static let appScheme = "tankarr-reader"
+
+    private init?(appURL url: URL) {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              parts.host?.lowercased() == "book" else { return nil }
+        let path = parts.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: true)
+        guard path.count == 1, let book = String(path[0]).removingPercentEncoding, !book.isEmpty else { return nil }
+        let page = parts.queryItems?.first(where: { $0.name == "page" })?.value.flatMap { Int($0) }
         self.init(bookID: book, pageIndex: page.flatMap { $0 >= 1 ? $0 - 1 : nil })
     }
 }
