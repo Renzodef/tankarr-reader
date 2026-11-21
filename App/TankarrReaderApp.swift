@@ -14,6 +14,9 @@ struct TankarrReaderApp: App {
             LibraryView().environmentObject(model).environmentObject(model.downloads).tint(.orange)
                 .environment(\.locale, model.languageLocale)
                 .task { await model.restore() }
+                .onOpenURL { url in
+                    if let link = ReaderLink(url: url) { model.pendingLink = link }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task { await model.becameActive() }
@@ -102,6 +105,8 @@ final class AppModel: ObservableObject {
     @Published var followingBusy: Set<String> = []
     @Published var followingError: String?
     @Published var pendingPushSeriesID: String?
+    /// A book link handed over by Safari's "Open in app" banner, opened once the library is ready.
+    @Published var pendingLink: ReaderLink?
     @Published private(set) var offlineMode = false
     @Published private(set) var automaticOffline = false
     let downloads = DownloadManager()
