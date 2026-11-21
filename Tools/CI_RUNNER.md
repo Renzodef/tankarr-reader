@@ -1,59 +1,59 @@
-# Runner Mac di Tankarr Reader
+# Tankarr Reader Mac runner
 
-Il workflow `Tankarr Reader iOS` usa il Mac personale Apple Silicon con queste
-etichette: `self-hosted`, `macOS`, `ARM64`, `tankarr-reader`. Il runner è
-registrato soltanto nel repository privato `Renzodef/tankarr-reader`.
+The `Tankarr Reader iOS` workflow uses the personal Apple Silicon Mac with these
+labels: `self-hosted`, `macOS`, `ARM64`, `tankarr-reader`. The runner is
+registered only in the private repository `Renzodef/tankarr-reader`.
 
-## Requisiti e registrazione
+## Requirements and registration
 
-- Xcode installato in `/Applications/Xcode.app`, primo avvio completato e
-  SDK iOS disponibile. Per il flusso normale non serve un runtime dei simulatori.
-  Un runtime con iPhone e iPad serve solo per i test UI opzionali.
-- Python 3 di Homebrew in `/opt/homebrew/bin/python3` e accesso di rete a GitHub
-  e ai servizi Apple. Il workflow usa esplicitamente questo interprete per
-  preparare le dipendenze in un ambiente virtuale temporaneo.
-- Utente del Mac con sessione aperta, Mac sveglio e connessione disponibile
-  per tutta la durata di test e distribuzione. Il servizio del runner deve
-  operare nella sessione di questo utente, necessaria ai simulatori.
+- Xcode installed in `/Applications/Xcode.app`, first launch completed and
+  iOS SDK available. The normal flow does not need a simulator runtime.
+  A runtime with iPhone and iPad is needed only for the optional UI tests.
+- Homebrew Python 3 in `/opt/homebrew/bin/python3` and network access to GitHub
+  and the Apple services. The workflow explicitly uses this interpreter to
+  prepare the dependencies in a temporary virtual environment.
+- Mac user with an open session, Mac awake and connection available
+  for the whole duration of tests and distribution. The runner service must
+  run in this user's session, which the simulators need.
 
-La registrazione si gestisce in GitHub → repository → **Settings → Actions →
-Runners → New self-hosted runner**, scegliendo macOS e ARM64 e aggiungendo
-l'etichetta `tankarr-reader`. La directory prevista sul Mac è
-`~/Developer/actions-runner-tankarr-reader`. Usare le istruzioni e il token
-temporaneo mostrati da GitHub per registrare il runner e configurare il suo
-servizio; token e file locali di configurazione restano fuori dal repository.
-Verificare nella pagina Runners che tutte le etichette siano presenti e lo
-stato sia **Idle** prima di avviare un workflow.
+Registration is managed in GitHub → repository → **Settings → Actions →
+Runners → New self-hosted runner**, choosing macOS and ARM64 and adding
+the `tankarr-reader` label. The expected directory on the Mac is
+`~/Developer/actions-runner-tankarr-reader`. Use the instructions and the temporary
+token shown by GitHub to register the runner and configure its
+service; token and local configuration files stay out of the repository.
+Check on the Runners page that all labels are present and the
+status is **Idle** before starting a workflow.
 
-## Esecuzione e coda
+## Execution and queue
 
-Il workflow parte solo dai push pertinenti su `main` e da `workflow_dispatch`;
-non esegue codice delle pull request. Tutti i job richiedono le quattro
-etichette indicate sopra. La concorrenza è impostata sull'intero workflow con
-`cancel-in-progress: false`: un solo flusso di test e distribuzione alla volta,
-senza interrompere quello in corso. GitHub può sostituire un'esecuzione ancora
-in attesa con una più recente dello stesso gruppo di concorrenza.
+The workflow starts only from relevant pushes to `main` and from `workflow_dispatch`;
+it does not run pull request code. All jobs require the four
+labels listed above. Concurrency is set on the whole workflow with
+`cancel-in-progress: false`: only one test and distribution flow at a time,
+without interrupting the one in progress. GitHub may replace a run still
+pending with a more recent one from the same concurrency group.
 
-I controlli comprendono le protezioni Python del rilascio, `swift test`, gli
-asset App Store e la compilazione iOS per dispositivo generico senza firma.
-Dal 2 novembre 2026 Renzo verifica l'interfaccia sull'iPhone reale con TestFlight;
-questa verifica manuale non viene dichiarata eseguita dalla CI. Dopo i controlli, i push su `main`
-distribuiscono automaticamente al gruppo TestFlight interno. L'azione manuale
-predefinita `verify` esegue questi controlli e salta la distribuzione; `testflight`
-carica una nuova build dopo i test. `submit` richiede versione e build esplicite
-già provate e mantiene i controlli che impediscono di modificare una versione
-già in revisione. Avviare `verify` da `main` per collaudare il runner senza
-caricare un'altra build su Apple. Selezionare `simulator_ui` solo per aggiungere
-i test UI iPhone/iPad con un runtime già installato; la CI non scarica runtime.
+The checks include the Python release safeguards, `swift test`, the
+App Store assets and the iOS build for a generic device without signing.
+Since 2 November 2026 Renzo verifies the interface on the real iPhone with TestFlight;
+this manual verification is not claimed as run by CI. After the checks, pushes to `main`
+distribute automatically to the internal TestFlight group. The default manual
+action `verify` runs these checks and skips distribution; `testflight`
+uploads a new build after the tests. `submit` requires an explicit version and build
+that have already been tried and keeps the checks that prevent changing a version
+already in review. Start `verify` from `main` to test the runner without
+uploading another build to Apple. Select `simulator_ui` only to add
+the iPhone/iPad UI tests with an already installed runtime; CI does not download runtimes.
 
-Se il Mac è spento, offline o in stop, il job resta in coda finché il runner
-torna disponibile, nei limiti della coda GitHub. Non è configurato un runner
-ospitato di riserva e non vengono consumati minuti dei Mac ospitati da GitHub.
+If the Mac is off, offline or asleep, the job stays queued until the runner
+is available again, within the limits of the GitHub queue. No backup hosted
+runner is configured and no GitHub-hosted Mac minutes are consumed.
 
-## Verifica dalla radice del repository
+## Verification from the repository root
 
-Con un ambiente virtuale attivo creato da `/opt/homebrew/bin/python3` e le
-dipendenze Python indicate nel workflow installate:
+With an active virtual environment created from `/opt/homebrew/bin/python3` and the
+Python dependencies listed in the workflow installed:
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -61,26 +61,26 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 python3 Tools/ci_build.py verify-device
 ```
 
-`verify-device` rigenera il progetto ed esegue core, asset e compilazione iOS
-senza simulatori. La lettura, i download in background, i segnalibri e le push
-vanno poi provati sulla build TestFlight dell'iPhone prima dell'invio pubblico.
+`verify-device` regenerates the project and runs core, assets and iOS build
+without simulators. Reading, background downloads, bookmarks and push
+must then be tried on the TestFlight build on the iPhone before the public submission.
 
-`verify` resta il comando opzionale per core, asset e test UI sulle due famiglie
-di simulatori. I risultati UI sono in `build/results/`; la verifica non
-richiede credenziali Apple. I simulatori già avviati restano accesi; quelli
-avviati dalla CI vengono spenti al termine. La CI non cancella i simulatori.
-I test UI avviano l'app con `--demo` e modificano solo progressi e segnalibri
-della demo, senza richieste al server personale.
+`verify` remains the optional command for core, assets and UI tests on the two
+simulator families. UI results are in `build/results/`; the verification does not
+require Apple credentials. Simulators already booted stay on; those
+booted by CI are shut down at the end. CI does not delete simulators.
+UI tests launch the app with `--demo` and change only the demo's progress and
+bookmarks, without requests to the personal server.
 
-## Firma e pulizia
+## Signing and cleanup
 
-I Secrets Apple sono gli stessi descritti in
-[BUILD_AND_UPLOAD.md](../AppStore/BUILD_AND_UPLOAD.md) e vengono forniti solo
-al passaggio di distribuzione, dopo l'installazione delle dipendenze e i test.
-La firma usa un keychain temporaneo, P12, chiave `.p8` e profilo con permessi
-restrittivi. Il cleanup elimina il materiale creato dalla CI anche in caso di
-errore e ripristina la configurazione dei keychain.
+The Apple Secrets are the same ones described in
+[BUILD_AND_UPLOAD.md](../AppStore/BUILD_AND_UPLOAD.md) and are provided only
+to the distribution step, after dependency installation and tests.
+Signing uses a temporary keychain, P12, `.p8` key and profile with restrictive
+permissions. Cleanup deletes the material created by CI even in case of
+error and restores the keychain configuration.
 
-Un profilo di provisioning già presente e identico viene riutilizzato senza
-modificarlo o rimuoverlo. Un profilo diverso nello stesso percorso fa fallire
-la distribuzione: la CI non sovrascrive i profili personali del Mac.
+An already present and identical provisioning profile is reused without
+changing or removing it. A different profile at the same path makes
+distribution fail: CI does not overwrite the Mac's personal profiles.

@@ -1,34 +1,34 @@
-# Configurazione portabile e aggiornamento
+# Portable configuration and refresh
 
-In **Connessione → Aggiorna Tankarr** si ricaricano catalogo, copertine,
-segnalibri e serie seguite. Non avvia scansioni, download, riavvii o ricerche
-sul server. Anche il gesto di aggiornamento della libreria usa questa via:
-una sessione valida resta attiva, senza azzerare download o scritture pendenti.
-Una richiesta annullata da iOS non diventa un errore di connessione. Soltanto
-un reale cambio di raggiungibilità richiede di selezionare nuovamente LAN/HTTPS.
-Il gesto in modalità offline aggiorna solo le copie sul dispositivo.
+In **Connection → Refresh Tankarr** the catalogue, covers,
+bookmarks and followed series are reloaded. It does not start scans, downloads, restarts or searches
+on the server. The library refresh gesture also uses this path:
+a valid session stays active, without resetting downloads or pending writes.
+A request cancelled by iOS does not become a connection error. Only
+a real change in reachability requires selecting LAN/HTTPS again.
+The gesture in offline mode refreshes only the copies on the device.
 
-**Esporta configurazione…**, accanto a **Importa configurazione…**, salva un
-JSON versione 1 nel percorso scelto tramite File. Contiene:
+**Export configuration…**, next to **Import configuration…**, saves a
+version 1 JSON at the location chosen through Files. It contains:
 
-- indirizzi locale/HTTPS, utente, modalità di connessione e identità del server;
-- lingua dell'interfaccia e opzioni di lettura dei singoli libri;
-- elenco delle serie seguite per le notifiche.
+- local/HTTPS addresses, username, connection mode and server identity;
+- interface language and reading options of the individual books;
+- list of the series followed for notifications.
 
-Il file non contiene password, token APNs, file scaricati, coda download o
-modifiche ai segnalibri non sincronizzate. Indirizzi, account e serie sono
-comunque dati personali: condividerlo solo con chi deve riceverli.
+The file does not contain passwords, APNs tokens, downloaded files, the download queue or
+unsynced bookmark changes. Addresses, accounts and series are
+still personal data: share it only with whoever needs to receive them.
 
-Importare il file prepara i campi; toccare **Connetti** per verificarli e
-applicare le preferenze. La password già salvata viene mantenuta solo per lo
-stesso account/server e gli indirizzi già configurati. L'identità dichiarata
-da un file non autorizza l'invio della password a un indirizzo nuovo. Su un
-dispositivo nuovo o quando cambiano gli indirizzi si inserisce la password una volta.
-Le vecchie configurazioni di sola connessione, anche quelle con password,
-restano importabili; un nuovo export non copia mai quella password.
+Importing the file fills in the fields; tap **Connect** to verify them and
+apply the preferences. The already saved password is kept only for the
+same account/server and the addresses already configured. The identity declared
+by a file does not authorize sending the password to a new address. On a
+new device or when the addresses change you enter the password once.
+Old connection-only configurations, including those with a password,
+remain importable; a new export never copies that password.
 
-Le opzioni dei libri e le serie seguite si ripristinano solo dopo aver
-verificato l'identità del server e lo stesso nome utente. Le serie seguite
-si aggiungono a quelle già presenti, senza cancellare le altre. Il consenso
-alle notifiche è di iOS e va dato sul singolo dispositivo: il JSON non può
-trasferirlo, né può attivare APNs se il server non è configurato.
+Book options and followed series are restored only after
+verifying the server identity and the same username. Followed series
+are added to those already present, without deleting the others. Consent
+to notifications belongs to iOS and must be given on each device: the JSON cannot
+transfer it, nor can it enable APNs if the server is not configured.

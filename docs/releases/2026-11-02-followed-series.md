@@ -1,25 +1,25 @@
-# Serie seguite e avvisi dei nuovi capitoli
+# Followed series and new-chapter notifications
 
-- Pulsante Segui nella scheda, scelta condivisa sullo stesso account e filtro
-  delle serie seguite nella libreria.
-- Registrazione APNs nativa e richiesta di permesso al primo Segui, con
-  collegamento alle impostazioni se negato. Nessun watcher o polling nell'app.
-- Gli avvisi aprono la serie soltanto per il server/account corrispondente;
-  nessun URL o comando del payload viene eseguito.
-- Gateway con outbox persistente, webhook Tankarr autenticato, baseline del
-  catalogo al momento del Segui e deduplica dei capitoli importati.
-- Supporto agli identificativi del provider contenenti punti, mantenendo il
-  rifiuto di percorsi, query e traversal; questi ID valgono anche per i bookmark.
-- Privacy aggiornata per la registrazione del dispositivo e la selezione di serie.
+- Follow button in the series page, choice shared on the same account and filter
+  of the followed series in the library.
+- Native APNs registration and permission request at the first Follow, with
+  a link to the settings if denied. No watcher or polling in the app.
+- Notifications open the series only for the matching server/account;
+  no URL or command from the payload is executed.
+- Gateway with persistent outbox, authenticated Tankarr webhook, catalogue
+  baseline at the moment of Follow and deduplication of imported chapters.
+- Support for provider identifiers containing dots, while keeping the
+  rejection of paths, queries and traversal; these IDs also apply to bookmarks.
+- Privacy updated for device registration and series selection.
 
-La capability Push Notifications richiede un profilo App Store aggiornato; il
-server richiede una chiave APNs separata dalla chiave App Store Connect.
-Senza di essa il Segui funziona e viene segnalata la mancata configurazione
-push: non viene dichiarata una consegna non verificata. Per il primo avviso
-reale servono inoltre una build firmata sul telefono e il permesso iOS.
+The Push Notifications capability requires an updated App Store profile; the
+server requires an APNs key separate from the App Store Connect key.
+Without it Follow works and the missing push configuration is
+reported: an unverified delivery is not claimed. For the first real
+notification a signed build on the phone and the iOS permission are also needed.
 
-Distribuzione: il push pertinente su main attiva la verifica completa e il
-caricamento TestFlight sul runner Mac. Non seleziona né ritira versioni App Store
-in revisione. Prima di un nuovo invio pubblico aggiornare le risposte privacy
-App Store Connect per gli identificatori e il contenuto di lettura inviati al
-server configurato, usati solo per funzionalità dell'app e senza tracciamento.
+Distribution: the relevant push to main triggers the full verification and the
+TestFlight upload on the Mac runner. It does not select or withdraw App Store versions
+in review. Before a new public submission update the App Store Connect privacy
+answers for the identifiers and the reading content sent to the
+configured server, used only for app functionality and without tracking.

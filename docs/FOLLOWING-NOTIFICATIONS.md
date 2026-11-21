@@ -1,78 +1,78 @@
-# Serie seguite e notifiche dei nuovi capitoli
+# Followed series and new-chapter notifications
 
-Nella scheda di una serie, **Segui la serie** salva la scelta sul server per
-l'account lettore. Toccare nuovamente **Serie seguita** interrompe gli avvisi.
-La campanella nella libreria filtra le serie seguite; il filtro si combina con
-ricerca e modalità offline. La scelta è condivisa tra i dispositivi dello
-stesso account e distinta da segnalibri, monitoraggio e download automatici.
-La demo conserva una selezione locale e non registra dispositivi con Apple.
+In a series page, **Follow series** saves the choice on the server for
+the reader account. Tapping **Following series** again stops the notifications.
+The bell in the library filters the followed series; the filter combines with
+search and offline mode. The choice is shared across the devices of the
+same account and separate from bookmarks, monitoring and automatic downloads.
+The demo keeps a local selection and does not register devices with Apple.
 
-Il primo Segui chiede il permesso iOS quando il server ha configurato le push.
-Se viene negato, la serie resta seguita e la scheda offre **Apri impostazioni
-notifiche**. iOS gestisce la consegna anche con Reader in background o chiuso;
-non vengono creati polling, watcher o timer nell'app. Non si può ricevere una
-push prima di aver installato una build compatibile, aperto l'app e consentito
-le notifiche sul dispositivo.
+The first Follow asks for the iOS permission when the server has configured push.
+If it is denied, the series stays followed and the series page offers **Open
+notification settings**. iOS handles delivery even with Reader in the background or closed;
+no polling, watchers or timers are created in the app. A push cannot be received
+before installing a compatible build, opening the app and allowing
+notifications on the device.
 
-Una notifica apre la scheda della serie. Il payload deve corrispondere a server
-e account correnti; non può contenere comandi o URL da aprire. Il salvataggio
-del segnalibro resta esplicito e non cambia per effetto di una notifica.
+A notification opens the series page. The payload must match the current server
+and account; it cannot contain commands or URLs to open. Saving
+the bookmark remains explicit and does not change as a result of a notification.
 
-## Gateway e protocollo
+## Gateway and protocol
 
-Il gateway opt-in dell'self-hosted dichiara `following_writable` e
-`push_notifications_available` in `GET /v1/status`. I vecchi server continuano
-a funzionare senza questi campi. `GET /v1/follows` restituisce la selezione;
-`PUT/DELETE /v1/series/ID/follow` la modifica; `PUT/DELETE
-/v1/notifications/devices/UUID` registra o rimuove il solo dispositivo.
-Le scritture richiedono autenticazione e `X-Tankarr-Reader: 1`, rifiutano Origin
-browser e non consentono modifiche amministrative. Il proxy sovrascrive
-`X-Tankarr-Reader-User` con l'account realmente autenticato.
+The opt-in gateway of the self-hosted stack declares `following_writable` and
+`push_notifications_available` in `GET /v1/status`. Old servers continue
+to work without these fields. `GET /v1/follows` returns the selection;
+`PUT/DELETE /v1/series/ID/follow` changes it; `PUT/DELETE
+/v1/notifications/devices/UUID` registers or removes only the device.
+Writes require authentication and `X-Tankarr-Reader: 1`, reject browser
+Origin and do not allow administrative changes. The proxy overwrites
+`X-Tankarr-Reader-User` with the actually authenticated account.
 
-Sul server, Tankarr invia l'evento `chapter_imported` al ricevitore interno,
-protetto da un token dedicato. La serie viene fotografata al momento del Segui:
-capitoli già presenti, backfill, sostituzioni e import duplicati non provocano
-avvisi. Un capitolo è disponibile quando l'import in libreria è riuscito;
-un annuncio online senza file leggibile non genera una push.
+On the server, Tankarr sends the `chapter_imported` event to the internal receiver,
+protected by a dedicated token. The series is snapshotted at the moment of Follow:
+chapters already present, backfill, replacements and duplicate imports do not trigger
+notifications. A chapter is available when the import into the library has succeeded;
+an online announcement without a readable file does not generate a push.
 
-Il database conserva selezioni per account, dispositivi e un outbox persistente.
-Gli errori temporanei di Apple vengono ritentati con backoff e limite; i token
-revocati vengono rimossi. Nessun download o segnalibro viene cambiato. Il
-backend non interroga periodicamente il catalogo: l'evento sveglia l'outbox.
+The database keeps selections per account, devices and a persistent outbox.
+Temporary Apple errors are retried with backoff and a limit; revoked
+tokens are removed. No download or bookmark is changed. The
+backend does not poll the catalogue periodically: the event wakes the outbox.
 
-Offline si può consultare la selezione salvata, ma per modificarla serve il
-server. Tornare online ricarica le scelte. Disconnettere l'account rimuove la
-registrazione push del dispositivo quando raggiungibile e disabilita la
-registrazione locale presso APNs; gli altri dispositivi restano indipendenti.
+Offline you can view the saved selection, but changing it requires the
+server. Going back online reloads the choices. Disconnecting the account removes the
+device's push registration when reachable and disables the
+local registration with APNs; the other devices remain independent.
 
-## Configurazione Apple
+## Apple configuration
 
-Il bundle resta `app.tankarr.reader`. Abilitare **Push Notifications** per
-l'App ID e rigenerare il profilo App Store con `aps-environment=production`.
-La verifica della firma rifiuta profili privi di questa capability. Il progetto
-usa l'ambiente sandbox in Debug e production in Release/TestFlight/App Store.
+The bundle stays `app.tankarr.reader`. Enable **Push Notifications** for
+the App ID and regenerate the App Store profile with `aps-environment=production`.
+The signing check rejects profiles without this capability. The project
+uses the sandbox environment in Debug and production in Release/TestFlight/App Store.
 
-Il gateway richiede una chiave **APNs** `.p8`, il relativo Key ID e il Team ID.
-Una chiave App Store Connect per pubblicare build non è una chiave APNs.
-La chiave resta nel credential store del server, mai nell'app, in Git, nei
-log o negli argomenti dei comandi. Senza configurazione il Segui funziona,
-ma l'app dichiara esplicitamente che le push non sono ancora configurate.
+The gateway requires an **APNs** `.p8` key, its Key ID and the Team ID.
+An App Store Connect key for publishing builds is not an APNs key.
+The key stays in the server's credential store, never in the app, in Git, in
+logs or in command arguments. Without configuration Follow works,
+but the app states explicitly that push is not configured yet.
 
-Prima della distribuzione pubblica aggiornare la privacy: il server scelto
-dal lettore riceve account, selezioni di serie, token APNs, lingua e ambiente
-di notifica, esclusivamente per questa funzionalità. Non si usano tracciamento
-o pubblicità. I file delle pagine e le password non entrano nelle notifiche.
+Before public distribution update the privacy information: the server chosen
+by the reader receives account, series selections, APNs token, language and notification
+environment, exclusively for this feature. No tracking
+or advertising is used. Page files and passwords never go into notifications.
 
-## Verifica e rollback
+## Verification and rollback
 
-I test core verificano compatibilità dei server precedenti, rotte ristrette e
-isolamento delle notifiche tra account/server; il test UI prova Segui, filtro,
-riapertura e rimozione su iPhone/iPad. I test del gateway verificano webhook
-autenticato, baseline, deduplica, outbox persistente e rotazione dei token.
-La consegna reale su iPhone richiede un token ottenuto da una build firmata e
-permesso iOS concesso: una simulazione non attesta la consegna APNs.
+The core tests verify compatibility with earlier servers, restricted routes and
+isolation of notifications between accounts/servers; the UI test tries Follow, filter,
+reopening and removal on iPhone/iPad. The gateway tests verify the authenticated
+webhook, baseline, deduplication, persistent outbox and token rotation.
+Real delivery on iPhone requires a token obtained from a signed build and
+the iOS permission granted: a simulation does not prove APNs delivery.
 
-Per disabilitare le push rimuovere la configurazione APNs del gateway e
-riavviare soltanto il gateway. Per ritirare anche il Segui disabilitare la sua
-configurazione, conservando il database per ripristino; i client vedranno la
-capability disattivata. Segnalibri e libreria non dipendono da questo database.
+To disable push remove the gateway's APNs configuration and
+restart only the gateway. To also withdraw Follow disable its
+configuration, keeping the database for restoring; clients will see the
+capability turned off. Bookmarks and library do not depend on this database.

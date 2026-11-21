@@ -1,36 +1,36 @@
 # Tankarr Reader 1.0.0 (8)
 
-Distribuita al gruppo TestFlight interno il **1 novembre 2026 alle 02:00 CET**
-(Europe/Rome). Apple: `VALID`, `IN_BETA_TESTING`. Note italiane e inglesi
-pubblicate e rilette per verificarne il contenuto.
+Distributed to the internal TestFlight group on **1 November 2026 at 02:00 CET**
+(Europe/Rome). Apple: `VALID`, `IN_BETA_TESTING`. Italian and English notes
+published and read back to verify their content.
 
-- Sorgenti: [`e9c971d`](https://github.com/Renzodef/tankarr-reader/commit/e9c971d9efea0a402345f0ee318a79da77415188).
-- [Pipeline di verifica, firma e distribuzione](https://github.com/Renzodef/tankarr-reader/actions/runs/41257363683): riuscita sul Mac dedicato.
-- 93 test Python, 50 test Swift e 8 test UI su ciascuna famiglia, iPhone e iPad: tutti riusciti.
-- Prima del push: tre prove UI mirate su iPhone e controllo visivo delle copertine e dei segnalibri offline.
+- Sources: [`e9c971d`](https://github.com/Renzodef/tankarr-reader/commit/e9c971d9efea0a402345f0ee318a79da77415188).
+- [Verification, signing and distribution pipeline](https://github.com/Renzodef/tankarr-reader/actions/runs/41257363683): succeeded on the dedicated Mac.
+- 93 Python tests, 50 Swift tests and 8 UI tests on each family, iPhone and iPad: all successful.
+- Before the push: three targeted UI tests on iPhone and a visual check of the covers and offline bookmarks.
 
-## Comandi aggiunti
+## Added controls
 
-- **Modalità offline**, icona Wi-Fi barrata in alto: mostra solo serie con
-  almeno un libro completo e i segnalibri di quelle serie. Le copie dei
-  segnalibri e le copertine persistono nell'archivio privato per account/server.
-  Un segnalibro che punta a un capitolo non scaricato apre la serie, con una
-  spiegazione, invece di avviare una lettura in rete.
-- **Download della serie**: menu **Scarica intervallo…**, con selettori Da/A
-  inclusivi nell'ordine del catalogo, **Scarica dal segnalibro alla fine** e
-  **Rimuovi download della serie**. Il capitolo segnato è incluso; un segnalibro
-  assente o non più presente nel catalogo non avvia un download totale.
-- **Download**: cestino in alto per cancellare tutte le copie locali e la coda
-  dell'account, con conferma. La cancellazione di una serie mantiene le altre.
-- **Torna alla serie** nel lettore, anche arrivando da Download o Segnalibri.
-- Copertine con proporzioni fisse e allineamento superiore; spazio uniforme
-  per i titoli a una o due righe.
+- **Offline mode**, crossed-out Wi-Fi icon at the top: shows only series with
+  at least one complete book and the bookmarks of those series. The bookmark
+  copies and the covers persist in the private storage per account/server.
+  A bookmark pointing to a chapter that is not downloaded opens the series, with an
+  explanation, instead of starting a network read.
+- **Series downloads**: **Download range…** menu, with inclusive From/Through
+  pickers in catalogue order, **Download from bookmark to end** and
+  **Remove series downloads**. The bookmarked chapter is included; a missing
+  bookmark, or one no longer present in the catalogue, does not start a full download.
+- **Downloads**: trash can at the top to delete all local copies and the account's
+  queue, with confirmation. Deleting one series keeps the others.
+- **Back to series** in the reader, even when coming from Downloads or Bookmarks.
+- Covers with fixed proportions and top alignment; uniform space
+  for one- or two-line titles.
 
-I test coprono intervalli invertiti/inesistenti, capitoli speciali, segnalibri
-obsoleti o di altre serie, isolamento fra account, persistenza dopo riapertura,
-filtri sui download completi e risposte tardive dopo la cancellazione.
+The tests cover inverted/nonexistent ranges, special chapters, stale bookmarks
+or bookmarks of other series, isolation between accounts, persistence after reopening,
+filters on complete downloads and late responses after deletion.
 
-I download richiedono l'app aperta. Attivare Offline mette in pausa i
-trasferimenti; modificare i segnalibri condivisi richiede una connessione.
-Le cancellazioni agiscono sulle copie locali. Nessuna modifica al server o
-alle code Tankarr, nessuna sostituzione dell'invio App Store esistente.
+Downloads require the app to be open. Turning Offline on pauses
+transfers; changing shared bookmarks requires a connection.
+Deletions act on the local copies. No changes to the server or
+to the Tankarr queues, no replacement of the existing App Store submission.

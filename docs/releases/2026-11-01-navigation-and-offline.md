@@ -1,68 +1,68 @@
-# Navigazione dei capitoli, segnalibri e offline automatico
+# Chapter navigation, bookmarks and automatic offline
 
-- Sorgenti: [`2f5494c`](https://github.com/Renzodef/tankarr-reader/commit/2f5494caf6b0f9d28e3e346dbd89620c82016a40).
-- Correzioni iPad: [`e23f29c`](https://github.com/Renzodef/tankarr-reader/commit/e23f29c0c6c9aafe1bf82e2ed22a0d30771a9252).
-- [Pipeline iPhone/iPad e TestFlight](https://github.com/Renzodef/tankarr-reader/actions/runs/41333905579).
+- Sources: [`2f5494c`](https://github.com/Renzodef/tankarr-reader/commit/2f5494caf6b0f9d28e3e346dbd89620c82016a40).
+- iPad fixes: [`e23f29c`](https://github.com/Renzodef/tankarr-reader/commit/e23f29c0c6c9aafe1bf82e2ed22a0d30771a9252).
+- [iPhone/iPad and TestFlight pipeline](https://github.com/Renzodef/tankarr-reader/actions/runs/41333905579).
 
-## Comportamento
+## Behaviour
 
-La barra delle pagine segue il verso orizzontale scelto: RTL parte da destra,
-LTR da sinistra; la lettura verticale mantiene la barra da sinistra.
-Avanti dall'ultima pagina apre il capitolo successivo alla prima pagina;
-indietro dalla prima apre il precedente all'ultima, indipendentemente dalla
-posizione locale precedente. Ogni capitolo ha nuovi task, immagini e preferenze.
+The page bar follows the chosen horizontal direction: RTL starts from the right,
+LTR from the left; vertical reading keeps the bar starting from the left.
+Forward from the last page opens the next chapter at the first page;
+back from the first opens the previous one at the last page, regardless of the
+previous local position. Each chapter gets new tasks, images and preferences.
 
-I capitoli adiacenti sono quelli indicati dal server, anche offline: il filtro
-dei download non deve saltare un capitolo mancante. Una copia incompleta non è
-leggibile offline. Quando manca il download o si raggiunge l'inizio/fine della
-serie, compare un avviso e resta aperto il capitolo corrente.
-In continuo un trascinamento iniziato sul bordo e rilasciato oltre il bordo
-attiva la stessa navigazione; raggiungere il bordo per inerzia non basta.
+The adjacent chapters are those indicated by the server, even offline: the downloads
+filter must not skip a missing chapter. An incomplete copy is not
+readable offline. When the download is missing or the start/end of the
+series is reached, a notice appears and the current chapter stays open.
+In continuous mode a drag started at the edge and released past the edge
+triggers the same navigation; reaching the edge through inertia is not enough.
 
-Nella scheda serie **Riprendi dal segnalibro** usa la pagina esplicita salvata,
-anche se la posizione locale è diversa. Se il capitolo segnato manca offline,
-compare un avviso senza richieste di rete. In assenza di segnalibro la scheda
-spiega dove crearlo: icona Segnalibro nel lettore, poi Salva segnalibro.
+In the series page **Resume from bookmark** uses the explicitly saved page,
+even if the local position is different. If the bookmarked chapter is missing offline,
+a notice appears without network requests. When there is no bookmark the series page
+explains where to create it: Bookmark icon in the reader, then Save bookmark.
 
-Con copie complete disponibili, la perdita di rete o un errore di raggiungibilità
-attiva **Offline automatico**. L'app riprova al ritorno della rete o in primo
-piano; non ci sono timer di riconnessione. Il controllo della rete usa gli eventi
-di [NWPathMonitor](https://developer.apple.com/documentation/network/nwpathmonitor).
-Offline scelto a mano rimane invece attivo finché si preme **Torna online** o
-il pulsante Wi-Fi barrato. Errori di autenticazione, TLS o del server restano
-visibili. Coda download e modifiche ai segnalibri restano persistenti.
+With complete copies available, a network loss or a reachability error
+turns on **Automatically offline**. The app retries when the network returns or when brought to the
+foreground; there are no reconnection timers. The network check uses the events
+of [NWPathMonitor](https://developer.apple.com/documentation/network/nwpathmonitor).
+Offline chosen manually instead stays on until you press **Go online** or
+the crossed-out Wi-Fi button. Authentication, TLS or server errors remain
+visible. The download queue and bookmark changes remain persistent.
 
-## Verifiche e distribuzione
+## Checks and distribution
 
-- Pre-push: **94 test Python**, asset e manifest privacy riusciti.
-- Core: **68 test Swift**, zero errori.
-- Simulatore iPhone: cambio capitolo online, ripresa dal segnalibro che prevale
-  sulla posizione locale, capitolo/segnalibro non scaricato senza richieste al
-  server, capitoli adiacenti offline, errore di socket con ritorno automatico
-  online, conservazione dell'offline manuale, trascinamento fisico della barra
-  RTL/LTR/verticale e trascinamento oltre il bordo nel continuo: riusciti.
-- Suite completa iPhone 17: **16 test UI, zero errori**, conclusa il 1 novembre
-  2026 alle **19:15:47 CET** (Europe/Rome).
-- Prove mirate iPad A16 (anche in finestra stretta): cursore RTL/LTR/verticale,
-  continuo, capitoli, segnalibri, offline automatico/manuale e riconnessione: riuscite.
-  La prova di foreground usa un cambio reale verso Impostazioni: Home da solo
-  può lasciare il lettore in primo piano nella modalità a finestre.
-- Suite completa iPad A16: **16 test UI, zero errori**, conclusa il 1 novembre
-  2026 alle **19:35:29 CET**. Il job di verifica è terminato con successo alle
+- Pre-push: **94 Python tests**, assets and privacy manifest succeeded.
+- Core: **68 Swift tests**, zero errors.
+- iPhone simulator: online chapter change, resume from the bookmark taking precedence
+  over the local position, chapter/bookmark not downloaded without requests to the
+  server, adjacent chapters offline, socket error with automatic return
+  online, manual offline preserved, physical drag of the
+  RTL/LTR/vertical bar and drag past the edge in continuous mode: succeeded.
+- Full iPhone 17 suite: **16 UI tests, zero errors**, finished on 1 November
+  2026 at **19:15:47 CET** (Europe/Rome).
+- Targeted iPad A16 tests (also in a narrow window): RTL/LTR/vertical slider,
+  continuous mode, chapters, bookmarks, automatic/manual offline and reconnection: succeeded.
+  The foreground test uses a real switch to Settings: Home alone
+  can leave the reader in the foreground in windowed mode.
+- Full iPad A16 suite: **16 UI tests, zero errors**, finished on 1 November
+  2026 at **19:35:29 CET**. The verification job ended successfully at
   **19:35:36 CET**.
-- Distribuzione: **1.0.0 (12)** caricata senza errori alle **19:37:30 CET**;
-  gruppo TestFlight interno aggiornato alle **19:39:38 CET**. La pipeline è
-  conclusa con successo alle **19:39:44 CET**.
-- Verifica indipendente su App Store Connect: build valida, stato
-  **IN_BETA_TESTING**, note `it` ed `en-US` salvate e rilette il 1 novembre
-  2026 alle **19:40 CET**.
+- Distribution: **1.0.0 (12)** uploaded without errors at **19:37:30 CET**;
+  internal TestFlight group updated at **19:39:38 CET**. The pipeline
+  completed successfully at **19:39:44 CET**.
+- Independent check on App Store Connect: valid build, status
+  **IN_BETA_TESTING**, `it` and `en-US` notes saved and read back on 1 November
+  2026 at **19:40 CET**.
 
-La prima pipeline è stata fermata prima della distribuzione: le nuove prove
-su iPad hanno rilevato l'interferenza dei controlli della finestra con la barra
-superiore e il cursore. I comandi ora usano la barra nativa; il titolo resta
-visibile anche nelle finestre strette e il cursore è sopra ai pulsanti pagina,
-lontano dall'angolo di ridimensionamento. Il test del cursore verifica anche
-che la larghezza della finestra resti invariata durante il trascinamento.
+The first pipeline was stopped before distribution: the new tests
+on iPad detected interference between the window controls and the top
+bar and the slider. The controls now use the native bar; the title stays
+visible even in narrow windows and the slider is above the page buttons,
+away from the resize corner. The slider test also verifies
+that the window width stays unchanged while dragging.
 
-Il backend Tankarr non richiede modifiche. Il push pubblica sul gruppo interno
-TestFlight dopo i test, senza sostituire la versione pubblica in revisione.
+The Tankarr backend requires no changes. The push publishes to the internal
+TestFlight group after the tests, without replacing the public version in review.

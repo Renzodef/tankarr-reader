@@ -1,65 +1,65 @@
-# Tankarr Reader — sviluppo del client iOS
+# Tankarr Reader — iOS client development
 
-Repository pubblico dell'app SwiftUI per iPhone e iPad, iOS 17+.
-Push diretto su `main`, senza force; niente branch/PR/issue senza richiesta.
-Installare il controllo pre-push: `git config core.hooksPath .githooks`.
-`./run-tests.sh` controlla tutta la suite Python e gli asset; `PYTHON` può
-indicare l'interprete dell'ambiente virtuale. Non saltare gli hook.
-Il bundle ID resta `app.tankarr.reader`: TestFlight e App Store usano lo stesso
-record Apple esistente. Il server vive in `Renzodef/tankarr`; la configurazione
-dello stack domestico vive in `Renzodef/self-hosted`.
+Public repository of the SwiftUI app for iPhone and iPad, iOS 17+.
+Push directly to `main`, without force; no branches/PRs/issues unless requested.
+Install the pre-push check: `git config core.hooksPath .githooks`.
+`./run-tests.sh` checks the whole Python suite and the assets; `PYTHON` can
+point to the virtual environment's interpreter. Do not skip the hooks.
+The bundle ID stays `app.tankarr.reader`: TestFlight and the App Store use the same
+existing Apple record. The server lives in `Renzodef/tankarr`; the home stack
+configuration lives in `Renzodef/self-hosted`.
 
-## Ambiente e struttura
+## Environment and structure
 
-- Identificare la macchina con `hostname`, `uname -m` e, se presente,
-  `/proc/device-tree/model` prima di attività operative.
-- Le build e i test UI iOS richiedono macOS/Xcode. I test Python dei rilasci
-  funzionano anche su Linux e non contattano Apple.
-- `App/`: interfaccia SwiftUI e risorse; `Sources/`: core condiviso;
-  `Tests/`: test Swift; `UITests/`: test UI; `tooling_tests/`: test Python dei rilasci.
-- `generate_project.py` rigenera `TankarrReader.xcodeproj`; eseguirlo dopo
-  l'aggiunta o rimozione di sorgenti o risorse gestiti dal generatore.
-- Questo repository non contiene script di produzione del server. Non
-  modificare o riavviare lo stack domestico per attività sul solo client.
+- Identify the machine with `hostname`, `uname -m` and, if present,
+  `/proc/device-tree/model` before operational work.
+- iOS builds and UI tests require macOS/Xcode. The Python release tests
+  also work on Linux and do not contact Apple.
+- `App/`: SwiftUI interface and resources; `Sources/`: shared core;
+  `Tests/`: Swift tests; `UITests/`: UI tests; `tooling_tests/`: Python release tests.
+- `generate_project.py` regenerates `TankarrReader.xcodeproj`; run it after
+  adding or removing sources or resources managed by the generator.
+- This repository contains no server production scripts. Do not
+  modify or restart the home stack for client-only work.
 
-## Verifica
+## Verification
 
-Usare un ambiente Python con `pytest`, `requests` e `cryptography` installati.
-Le versioni CI sono fissate in `.github/workflows/tankarr-ios.yml`.
+Use a Python environment with `pytest`, `requests` and `cryptography` installed.
+The CI versions are pinned in `.github/workflows/tankarr-ios.yml`.
 
 ```sh
 python3 -m pytest tooling_tests/test_tankarr_ios_ci.py tooling_tests/test_tankarr_ios_release.py -q
 python3 Tools/check_store_assets.py
 ```
 
-Decisione di Renzo del 2 novembre 2026: per risparmiare spazio e velocizzare
-TestFlight, la CI usa `python3 Tools/ci_build.py verify-device`: test del core,
-asset e compilazione iOS senza runtime dei simulatori. Renzo prova la build
-TestFlight sull'iPhone prima dell'invio pubblico; non dichiarare quei test
-manuali eseguiti dall'agente. La compilazione non prova download in background,
-push o navigazione su un dispositivo.
+Renzo's decision of 2 November 2026: to save space and speed up
+TestFlight, CI uses `python3 Tools/ci_build.py verify-device`: core tests,
+assets and iOS compilation without simulator runtimes. Renzo tries the
+TestFlight build on the iPhone before the public submission; do not claim those
+manual tests were run by the agent. Compilation does not prove background
+downloads, push or navigation on a device.
 
-`python3 Tools/ci_build.py verify` resta disponibile per il percorso completo
-con test UI iPhone/iPad nello stesso runtime iOS, anche tramite l'opzione
-manuale `simulator_ui` del workflow. Non installare automaticamente runtime
-pesanti. Le verifiche di firma e gli hook pre-push restano obbligatori.
+`python3 Tools/ci_build.py verify` remains available for the full path
+with iPhone/iPad UI tests in the same iOS runtime, also through the
+manual `simulator_ui` option of the workflow. Do not automatically install heavy
+runtimes. Signing checks and pre-push hooks remain mandatory.
 
-## Credenziali e distribuzione
+## Credentials and distribution
 
-- Mai versionare connessioni private, password, chiavi `.p8`, certificati con
-  chiavi private, profili di provisioning, keychain o configurazioni locali di
-  firma. I dati demo devono restare originali e privi di informazioni personali.
-- I Secrets Apple appartengono al repository GitHub e vengono iniettati solo
-  nel passaggio di distribuzione, dopo i test e l'installazione delle dipendenze.
-- I push pertinenti su `main` aggiornano il gruppo TestFlight interno.
-  L'invio pubblico è solo tramite `workflow_dispatch` con azione `submit`,
-  versione e build esplicite già provate. Non ritirare né sostituire una
-  versione già in revisione per effetto di un push.
-- Conservare la numerazione interrogando App Store Connect; non azzerarla
-  dopo la separazione dal repository dello stack.
-- Il P12 temporaneo d'importazione usa il formato compatibile macOS. L'UUID
-  del profilo deve mantenere esattamente maiuscole e minuscole dell'originale.
-- Durante la migrazione, disattivare il vecchio uploader e risolvere eventuali
-  job pendenti prima del primo push con workflow attivo in questo repository.
+- Never commit private connections, passwords, `.p8` keys, certificates with
+  private keys, provisioning profiles, keychains or local signing
+  configurations. Demo data must stay original and free of personal information.
+- The Apple Secrets belong to the GitHub repository and are injected only
+  in the distribution step, after the tests and the dependency installation.
+- Relevant pushes to `main` update the internal TestFlight group.
+  Public submission happens only through `workflow_dispatch` with the `submit`
+  action and an explicit version and build that have already been tried. Do not
+  withdraw or replace a version already in review as a result of a push.
+- Preserve the numbering by querying App Store Connect; do not reset it
+  after the separation from the stack repository.
+- The temporary import P12 uses the macOS-compatible format. The profile
+  UUID must keep exactly the upper and lower case of the original.
+- During the migration, disable the old uploader and resolve any
+  pending jobs before the first push with an active workflow in this repository.
 
-Dettagli: [AppStore/BUILD_AND_UPLOAD.md](AppStore/BUILD_AND_UPLOAD.md).
+Details: [AppStore/BUILD_AND_UPLOAD.md](AppStore/BUILD_AND_UPLOAD.md).

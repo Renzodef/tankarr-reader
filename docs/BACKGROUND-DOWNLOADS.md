@@ -1,57 +1,57 @@
-# Download e coda persistente su iOS
+# Downloads and persistent queue on iOS
 
-Il download reale usa una sola `URLSessionConfiguration.background` per account,
-con identificatore stabile, delegate e `sessionSendsLaunchEvents = true`.
-`isDiscretionary = false` dà precedenza alla selezione avviata dall'utente; iOS
-resta libero di differirla per rete, energia e richieste create in background.
-Nessun audio silenzioso, timer keepalive o background mode improprio.
+The real download uses a single `URLSessionConfiguration.background` per account,
+with a stable identifier, delegate and `sessionSendsLaunchEvents = true`.
+`isDiscretionary = false` gives priority to the user-started selection; iOS
+remains free to defer it for network, power and requests created in the background.
+No silent audio, keepalive timer or improper background mode.
 
-## Stato e ciclo di vita
+## State and lifecycle
 
-- La selezione completa, nell'ordine del catalogo, viene scritta atomicamente in
-  `.metadata/background-queue.json` prima di creare task. Contiene serie, libri,
-  token e pagine mancanti, senza URL o credenziali.
-- Anche il recupero dei metadati del libro è un download background. I libri
-  non ancora iniziati non dipendono da una `Task` Swift rimasta in memoria.
-- Batch fino a 64 richieste, con due connessioni per host. Evita il risveglio
-  dell'app dopo ogni singola pagina; l'ammissione si riduce se manca spazio.
-- In background iOS gestisce la rete in un altro processo. Il delegate sposta
-  subito i file temporanei, poi valida risposta, dimensione e immagine. Lo store
-  verifica spazio e token, salva la pagina/checksum e infine aggiorna la coda.
-- Il completion handler UIKit viene chiamato sul main actor soltanto dopo
-  l'elaborazione degli eventi, le scritture e l'eventuale nuovo batch.
-- Dopo una terminazione si riassocia la sessione agli stessi task e si rilegge
-  la coda. Se iOS ha annullato i task per chiusura forzata, vengono ricreati alla
-  riapertura. Una pagina salvata prima della scrittura della coda viene
-  riconosciuta tramite manifest/checksum, senza riscaricarla.
-- Un errore conserva la selezione e ferma i tentativi; il ritorno nell'app,
-  la riconnessione o «Riprendi la coda» riprovano. Un'assenza di connettività
-  iniziale è gestita da `waitsForConnectivity`.
-- Offline conserva la coda sospesa; pausa esplicita di un libro conserva le
-  pagine ma rimuove quel libro dalla coda attiva. Rimuovi serie/tutto annulla gli
-  intenti prima dei task, così i callback tardivi non ricreano i download.
+- The complete selection, in catalogue order, is written atomically to
+  `.metadata/background-queue.json` before creating tasks. It contains series, books,
+  tokens and missing pages, without URLs or credentials.
+- Fetching the book metadata is also a background download. Books
+  not started yet do not depend on a Swift `Task` kept in memory.
+- Batches of up to 64 requests, with two connections per host. This avoids waking
+  the app after every single page; admission is reduced if space is short.
+- In the background iOS handles the network in another process. The delegate moves
+  the temporary files immediately, then validates response, size and image. The store
+  checks space and token, saves the page/checksum and finally updates the queue.
+- The UIKit completion handler is called on the main actor only after
+  the events have been processed, the writes done and any new batch created.
+- After a termination the session is reattached to the same tasks and the
+  queue is read again. If iOS cancelled the tasks because of a force quit, they are recreated on
+  reopening. A page saved before the queue was written is
+  recognized through manifest/checksum, without downloading it again.
+- An error keeps the selection and stops the attempts; returning to the app,
+  reconnecting or «Riprendi la coda» (Resume queue) retry. An initial lack of connectivity
+  is handled by `waitsForConnectivity`.
+- Offline keeps the queue suspended; explicitly pausing a book keeps the
+  pages but removes that book from the active queue. Removing series/everything cancels the
+  intents before the tasks, so late callbacks do not recreate the downloads.
 
-## Protezione
+## Protection
 
-Password nel Portachiavi `AfterFirstUnlockThisDeviceOnly`; file offline e coda
-protetti fino al primo sblocco, privati (0700/0600), esclusi dal backup. Questa
-classe permette le scritture a schermo bloccato dopo il primo sblocco dal boot.
-Le credenziali passano a iOS solo nell'header della richiesta autenticata;
-non sono salvate nel nostro journal. TLS resta verificato, cookie/cache disabilitati.
-Il background networking di Apple segue autonomamente i redirect: il client
-rifiuta un file se l'URL finale differisce da quello richiesto. Il gateway
-configurato deve servire direttamente gli endpoint delle pagine, senza redirect.
+Password in the Keychain with `AfterFirstUnlockThisDeviceOnly`; offline files and queue
+protected until first unlock, private (0700/0600), excluded from backup. This
+class allows writes with the screen locked after the first unlock since boot.
+Credentials are passed to iOS only in the header of the authenticated request;
+they are not saved in our journal. TLS stays verified, cookies/cache disabled.
+Apple's background networking follows redirects on its own: the client
+rejects a file if the final URL differs from the requested one. The configured
+gateway must serve the page endpoints directly, without redirects.
 
-## Verifica
+## Verification
 
-`BackgroundDownloadQueueTests` controlla coda dopo perdita del processo,
-capitoli non iniziati, batch/deduplica, fencing dopo rimozione, interruzione fra
-scrittura della pagina e della coda, isolamento account e richieste senza
-credenziali negli URL. `BackgroundDownloadUITests` usa un server HTTP locale
-nel runner XCTest e il vero servizio di download iOS: Home durante trasferimenti
-lenti; chiusura/riapertura a metà di una selezione; lettura offline successiva.
-Il simulatore è firmato ad hoc per provare anche il Portachiavi reale, senza
-certificati o credenziali Apple. I test non contattano il server dell'utente.
+`BackgroundDownloadQueueTests` checks the queue after process loss,
+chapters not started, batching/deduplication, fencing after removal, interruption between
+writing the page and writing the queue, account isolation and requests without
+credentials in URLs. `BackgroundDownloadUITests` uses a local HTTP server
+in the XCTest runner and the real iOS download service: Home during slow
+transfers; closing/reopening halfway through a selection; subsequent offline reading.
+The simulator is ad hoc signed to also test the real Keychain, without
+Apple certificates or credentials. The tests do not contact the user's server.
 
-Fonti Apple: [download background](https://developer.apple.com/documentation/foundation/downloading-files-in-the-background),
-[sospensione e chiusura forzata](https://developer.apple.com/documentation/foundation/urlsessionconfiguration/background(withidentifier:)).
+Apple sources: [background download](https://developer.apple.com/documentation/foundation/downloading-files-in-the-background),
+[suspension and force quit](https://developer.apple.com/documentation/foundation/urlsessionconfiguration/background(withidentifier:)).

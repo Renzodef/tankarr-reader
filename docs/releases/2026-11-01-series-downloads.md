@@ -1,40 +1,40 @@
-# Download interattivi nella serie
+# Interactive downloads in the series
 
-- Sorgenti: [`c82486e`](https://github.com/Renzodef/tankarr-reader/commit/c82486ecb80c77c1f0e5ebabf82ec15f0c30356a).
-- [Pipeline di verifica e TestFlight](https://github.com/Renzodef/tankarr-reader/actions/runs/41274526121).
+- Sources: [`c82486e`](https://github.com/Renzodef/tankarr-reader/commit/c82486ecb80c77c1f0e5ebabf82ec15f0c30356a).
+- [Verification and TestFlight pipeline](https://github.com/Renzodef/tankarr-reader/actions/runs/41274526121).
 
-## Modifica
+## Change
 
-La pagina della serie mostra sotto ogni capitolo gli stessi indicatori della
-schermata Download globale: barra, percentuale, pagine salvate sul totale,
-spazio occupato, posizione nella selezione, pausa, completamento ed errori.
-Un riepilogo indica quanti libri sono completi e quanti restano in coda.
-Anche un libro che aspetta ancora i metadati mostra il proprio stato in coda.
+The series page shows under each chapter the same indicators as the
+global Downloads screen: bar, percentage, pages saved out of the total,
+storage used, position in the selection, pause, completion and errors.
+A summary shows how many books are complete and how many are still queued.
+Even a book still waiting for its metadata shows its queued status.
 
-Il pulsante accanto al capitolo mette in pausa o riprende; dopo il completamento
-permette di rimuovere la copia locale. Lo scorrimento laterale offre la rimozione
-con conferma anche per i download incompleti. Pausa e ripresa hanno etichette
-accessibili distinte e testi italiani/inglesi.
+The button next to the chapter pauses or resumes; after completion
+it lets you remove the local copy. Swiping sideways offers removal
+with confirmation, even for incomplete downloads. Pause and resume have distinct
+accessibility labels and Italian/English texts.
 
-`DownloadBookProgress` è condiviso dalle due schermate e osserva direttamente
-`DownloadManager`. Cambiare pagina non crea un'altra coda, non azzera il
-conteggio e non avvia un secondo trasferimento. I nuovi metodi del manager
-leggono ordine e numero degli elementi senza cambiare il motore dei download
-in background o il formato del journal persistente.
+`DownloadBookProgress` is shared by the two screens and observes
+`DownloadManager` directly. Switching screen does not create another queue, does not reset the
+count and does not start a second transfer. The new manager methods
+read order and number of items without changing the background download
+engine or the format of the persistent journal.
 
-## Verifica
+## Verification
 
-Prima del push: 94 test Python e 56 Swift riusciti. La prova UI mirata su
-iPhone 17 simula pagine lente da un server locale e controlla avanzamento
-nella serie, pausa, stesso conteggio nella lista globale, ritorno nella serie,
-ripresa, completamento e rimozione di un solo capitolo mantenendo l'altro.
-Controllata anche la schermata acquisita durante il download.
+Before the push: 94 Python and 56 Swift tests succeeded. The targeted UI test on
+iPhone 17 simulates slow pages from a local server and checks progress
+in the series, pause, the same count in the global list, return to the series,
+resume, completion and removal of a single chapter while keeping the other.
+The screen captured during the download was also checked.
 
-La suite completa su iPhone 17 ha concluso **12 prove con zero errori** il
-1 novembre 2026 alle **06:03:41 CET** (Europe/Rome).
+The full suite on iPhone 17 completed **12 tests with zero errors** on
+1 November 2026 at **06:03:41 CET** (Europe/Rome).
 
-La suite iPad ha concluso **12 prove con zero errori** alle **06:17:30 CET**.
-Archivio, esportazione e upload riusciti. **1.0.0 (10)** distribuita al gruppo
-TestFlight interno alle **06:25:39 CET**; stato Apple `VALID` / `IN_BETA_TESTING`
-e note italiane/inglesi verificati tramite API. Nessuna modifica al server
-Tankarr o all'invio App Store esistente.
+The iPad suite completed **12 tests with zero errors** at **06:17:30 CET**.
+Archive, export and upload succeeded. **1.0.0 (10)** distributed to the internal
+TestFlight group at **06:25:39 CET**; Apple status `VALID` / `IN_BETA_TESTING`
+and Italian/English notes verified via API. No change to the Tankarr
+server or to the existing App Store submission.

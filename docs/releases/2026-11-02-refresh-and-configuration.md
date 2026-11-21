@@ -1,16 +1,16 @@
-# Aggiornamento, configurazione e continuità dei capitoli
+# Refresh, configuration and chapter continuity
 
-- Connessione: pulsante **Aggiorna Tankarr** con stato di avanzamento ed esito.
-- Aggiornamento della libreria nella sessione esistente; annullamenti iOS
-  ignorati senza mostrare falsi errori di connessione.
-- Export/import JSON di connessione, lingua, opzioni di lettura e serie seguite;
-  password e token non vengono esportati. Ripristino delle preferenze legato
-  all'identità di account e server.
-- Gateway: ordine condiviso fra catalogo e confini dei capitoli, con prologhi
-  prima dei capitoli numerati e nessun ritorno ai prologhi dopo l'ultimo.
-- Il refresh esplicito invalida la breve cache dei metadati del gateway;
-  non avvia scansioni del filesystem né ricerche di nuovi download.
+- Connection: **Refresh Tankarr** button with progress status and result.
+- Library refresh in the existing session; iOS cancellations
+  ignored without showing false connection errors.
+- JSON export/import of connection, language, reading options and followed series;
+  passwords and tokens are not exported. Restoring preferences is tied
+  to the identity of account and server.
+- Gateway: shared order between catalogue and chapter boundaries, with prologues
+  before the numbered chapters and no return to the prologues after the last one.
+- The explicit refresh invalidates the gateway's short metadata cache;
+  it does not start filesystem scans or searches for new downloads.
 
-Il Reader mostra soltanto i capitoli già importati sul server. Il numero di
-capitoli presenti nelle fonti non equivale a quello dei file leggibili.
-Questa versione non attiva download amministrativi dal client in sola lettura.
+Reader shows only the chapters already imported on the server. The number of
+chapters present in the sources is not the same as the number of readable files.
+This version does not enable administrative downloads from the read-only client.
