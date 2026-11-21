@@ -1,5 +1,9 @@
 # Tankarr Reader per iOS
 
+[![Download on the App Store](https://tools.applemarketingtools.com/api/badges/download-on-the-app-store/black/en-us)](https://apps.apple.com/app/tankarr-reader/id6828301550)
+
+**App Store:** [Tankarr Reader](https://apps.apple.com/app/tankarr-reader/id6828301550), for iPhone and iPad, and on Macs with Apple silicon from the same App Store listing. Server: [Renzodef/tankarr](https://github.com/Renzodef/tankarr).
+
 Client nativo SwiftUI per il gateway Tankarr Reader dell'self-hosted. iOS 17+,
 iPhone e iPad; nessuna dipendenza esterna. Catalogo con ricerca e copertine,
 elenco dei libri scaricati, lettura a pagine con zoom e scorrimento continuo,

@@ -1,6 +1,6 @@
 # Tankarr Reader — sviluppo del client iOS
 
-Repository privato dell'app SwiftUI per iPhone e iPad, iOS 17+.
+Repository pubblico dell'app SwiftUI per iPhone e iPad, iOS 17+.
 Push diretto su `main`, senza force; niente branch/PR/issue senza richiesta.
 Installare il controllo pre-push: `git config core.hooksPath .githooks`.
 `./run-tests.sh` controlla tutta la suite Python e gli asset; `PYTHON` può
