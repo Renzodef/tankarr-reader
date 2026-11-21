@@ -223,6 +223,9 @@ def validate_signing(profile, certificate, team):
             or entitlements.get("aps-environment") != "production"
             or profile.get("ProvisionedDevices") or profile.get("ProvisionsAllDevices")):
         raise ValueError("Expected an App Store distribution profile for the configured team and bundle")
+    if not entitlements.get("com.apple.developer.associated-domains"):
+        # Web reader links open the app through applinks:tankarr.renzodef.com.
+        raise ValueError("The provisioning profile lacks Associated Domains: enable it on the App ID and regenerate the profile")
     common_names = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
     teams = certificate.subject.get_attributes_for_oid(NameOID.ORGANIZATIONAL_UNIT_NAME)
     if (not common_names or not common_names[0].value.startswith(("Apple Distribution:", "iPhone Distribution:"))
