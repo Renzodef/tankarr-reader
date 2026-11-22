@@ -148,6 +148,7 @@ struct LibraryView: View {
         .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries(); openLinkedBook() }
         .onChange(of: model.busy) { _, busy in if !busy { openPushSeries(); openLinkedBook() } }
         .onChange(of: model.pendingLink) { _, _ in openLinkedBook() }
+        .onChange(of: model.offlineMode) { _, _ in openLinkedBook() }
         .onAppear { openLinkedBook() }
         .fullScreenCover(item: $linkedBook) { book in
             ReaderView(bookID: book.id, openingPage: book.page)
@@ -169,7 +170,10 @@ struct LibraryView: View {
         if let series = model.series(id) { path = [.series(series)] }
     }
     private func openLinkedBook() {
-        guard !model.busy, model.canBrowse, let link = model.pendingLink else { return }
+        // On a cold start the cached library shows before the connection; wait for the
+        // server (or real offline/demo mode) so the book does not open as "not downloaded".
+        guard !model.busy, model.canBrowse, model.api != nil || model.offlineMode || model.isDemo,
+              let link = model.pendingLink else { return }
         model.pendingLink = nil
         let book = LinkedBook(id: link.bookID, page: link.pageIndex)
         let sheetOpen = showBookmarks || showDownloads || model.showConnection
