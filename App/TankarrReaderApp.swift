@@ -17,6 +17,10 @@ struct TankarrReaderApp: App {
                 .onOpenURL { url in
                     if let link = ReaderLink(url: url) { model.pendingLink = link }
                 }
+                // Universal links: tapping a web reader volume link opens it here directly.
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL, let link = ReaderLink(url: url) { model.pendingLink = link }
+                }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         Task { await model.becameActive() }
