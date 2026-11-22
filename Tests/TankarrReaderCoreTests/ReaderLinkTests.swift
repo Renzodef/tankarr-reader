@@ -3,6 +3,13 @@ import XCTest
 @testable import TankarrReaderCore
 
 final class ReaderLinkTests: XCTestCase {
+    func testSeriesLinkOpensSeriesWithoutSelectingAVolume() {
+        XCTAssertEqual(ReaderLink(url: URL(string: "tankarr-reader://series/s%201")!), .series(id: "s 1"))
+        XCTAssertEqual(ReaderLink(url: URL(string: "https://tankarr.example.com/#series=s1")!), .series(id: "s1"))
+        XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://series/a/b")!))
+        XCTAssertNil(ReaderLink(url: URL(string: "https://tankarr.example.com/#series=")!))
+    }
+
     func testWebReaderLinkOpensBookAtOneBasedPage() {
         let url = URL(string: "https://tankarr.example.com/#book=manual-abc123&page=3")!
         XCTAssertEqual(ReaderLink(url: url), ReaderLink(bookID: "manual-abc123", pageIndex: 2))
@@ -19,7 +26,7 @@ final class ReaderLinkTests: XCTestCase {
 
     func testPercentEncodedBookIDIsDecoded() {
         let url = URL(string: "https://tankarr.example.com/#book=a%20b&page=1")!
-        XCTAssertEqual(ReaderLink(url: url)?.bookID, "a b")
+        XCTAssertEqual(ReaderLink(url: url), .book(id: "a b", pageIndex: 0))
     }
 
     func testLinksWithoutBookAreIgnored() {
@@ -39,7 +46,7 @@ final class ReaderLinkTests: XCTestCase {
 
     func testAppSchemeLinksWithoutBookAreIgnored() {
         XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://book/")!))
-        XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://series/s1")!))
+        XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://series/")!))
         XCTAssertNil(ReaderLink(url: URL(string: "tankarr-reader://book/a/b")!))
         XCTAssertNil(ReaderLink(url: URL(string: "other-app://book/b1")!))
     }

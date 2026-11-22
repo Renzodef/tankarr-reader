@@ -1,17 +1,12 @@
 import Foundation
 
-/// A link to one book in the web reader, such as `https://host/#book=<id>&page=3`.
-///
-/// Safari's "Open in app" banner passes the page address to the app, so the app
-/// can open the same book. The page number in the link is 1-based; `pageIndex`
-/// is 0-based, and `nil` means "open where the reader would normally open".
-public struct ReaderLink: Equatable, Sendable {
-    public let bookID: String
-    public let pageIndex: Int?
+/// A link to a series or to a book at an optional page.
+public enum ReaderLink: Equatable, Sendable {
+    case series(id: String)
+    case book(id: String, pageIndex: Int?)
 
     public init(bookID: String, pageIndex: Int?) {
-        self.bookID = bookID
-        self.pageIndex = pageIndex
+        self = .book(id: bookID, pageIndex: pageIndex)
     }
 
     public init?(url: URL) {
@@ -30,7 +25,11 @@ public struct ReaderLink: Equatable, Sendable {
                   let value = field[1].replacingOccurrences(of: "+", with: " ").removingPercentEncoding else { continue }
             values[field[0]] = value
         }
-        guard let book = values["book"], !book.isEmpty else { return nil }
+        guard let book = values["book"], !book.isEmpty else {
+            guard let id = values["series"], !id.isEmpty else { return nil }
+            self = .series(id: id)
+            return
+        }
         let page = values["page"].flatMap { Int($0) }
         self.init(bookID: book, pageIndex: page.flatMap { $0 >= 1 ? $0 - 1 : nil })
     }
@@ -40,11 +39,17 @@ public struct ReaderLink: Equatable, Sendable {
     public static let appScheme = "tankarr-reader"
 
     private init?(appURL url: URL) {
-        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              parts.host?.lowercased() == "book" else { return nil }
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         let path = parts.percentEncodedPath.split(separator: "/", omittingEmptySubsequences: true)
-        guard path.count == 1, let book = String(path[0]).removingPercentEncoding, !book.isEmpty else { return nil }
-        let page = parts.queryItems?.first(where: { $0.name == "page" })?.value.flatMap { Int($0) }
-        self.init(bookID: book, pageIndex: page.flatMap { $0 >= 1 ? $0 - 1 : nil })
+        guard path.count == 1, let id = String(path[0]).removingPercentEncoding, !id.isEmpty else { return nil }
+        switch parts.host?.lowercased() {
+        case "series":
+            self = .series(id: id)
+        case "book":
+            let page = parts.queryItems?.first(where: { $0.name == "page" })?.value.flatMap { Int($0) }
+            self.init(bookID: id, pageIndex: page.flatMap { $0 >= 1 ? $0 - 1 : nil })
+        default:
+            return nil
+        }
     }
 }

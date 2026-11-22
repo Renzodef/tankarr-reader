@@ -145,11 +145,11 @@ struct LibraryView: View {
                 .environmentObject(model.downloads)
         }
         .onChange(of: model.pendingPushSeriesID) { _, _ in openPushSeries() }
-        .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries(); openLinkedBook() }
-        .onChange(of: model.busy) { _, busy in if !busy { openPushSeries(); openLinkedBook() } }
-        .onChange(of: model.pendingLink) { _, _ in openLinkedBook() }
-        .onChange(of: model.offlineMode) { _, _ in openLinkedBook() }
-        .onAppear { openLinkedBook() }
+        .onChange(of: model.library.map(\.id)) { _, _ in openPushSeries(); openReaderLink() }
+        .onChange(of: model.busy) { _, busy in if !busy { openPushSeries(); openReaderLink() } }
+        .onChange(of: model.pendingLink) { _, _ in openReaderLink() }
+        .onChange(of: model.offlineMode) { _, _ in openReaderLink() }
+        .onAppear { openReaderLink() }
         .fullScreenCover(item: $linkedBook) { book in
             ReaderView(bookID: book.id, openingPage: book.page)
                 .environmentObject(model)
@@ -169,21 +169,32 @@ struct LibraryView: View {
         guard let id = pendingSeries else { return }; pendingSeries = nil
         if let series = model.series(id) { path = [.series(series)] }
     }
-    private func openLinkedBook() {
-        // On a cold start the cached library shows before the connection; wait for the
-        // server (or real offline/demo mode) so the book does not open as "not downloaded".
+    private func openReaderLink() {
+        // Wait for connection or offline mode before resolving the incoming link.
         guard !model.busy, model.canBrowse, model.api != nil || model.offlineMode || model.isDemo,
               let link = model.pendingLink else { return }
         model.pendingLink = nil
-        let book = LinkedBook(id: link.bookID, page: link.pageIndex)
-        let sheetOpen = showBookmarks || showDownloads || model.showConnection
-        showBookmarks = false; showDownloads = false; model.showConnection = false
-        linkedBook = nil
-        // A full-screen cover cannot appear while a sheet is still closing.
-        if sheetOpen {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { linkedBook = book }
-        } else {
-            linkedBook = book
+        switch link {
+        case .series(let id):
+            guard let series = model.series(id) else { return }
+            linkedBook = nil
+            showBookmarks = false
+            showDownloads = false
+            model.showConnection = false
+            path = [.series(series)]
+        case .book(let id, let pageIndex):
+            let book = LinkedBook(id: id, page: pageIndex)
+            let sheetOpen = showBookmarks || showDownloads || model.showConnection
+            showBookmarks = false
+            showDownloads = false
+            model.showConnection = false
+            linkedBook = nil
+            // The full-screen reader must wait for the sheet to dismiss.
+            if sheetOpen {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { linkedBook = book }
+            } else {
+                linkedBook = book
+            }
         }
     }
     private func openPushSeries() {
